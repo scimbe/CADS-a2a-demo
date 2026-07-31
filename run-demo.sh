@@ -16,6 +16,15 @@ ENV_FILE="${ENV_FILE:-.env}"
 HOSTNAME_FQDN="${HOSTNAME_FQDN:-a2a-demo.bunsenbrenner.org}"
 CP_URL="${CP_URL:-${A2A_AGENT_CP_URL:-http://127.0.0.1:8090}}"
 EDGE="${EDGE:-${A2A_AGENT_EDGE:-127.0.0.1:4433}}"
+# CP_URL/EDGE above are this SCRIPT's own host-side reachability checks (curl from
+# the host running this script) -- when the plane and this demo are co-located via
+# Docker Compose on the same host, the CONTAINERIZED agent needs the plane's
+# compose-network service names instead (e.g. control-plane:8090 / edge:4433), not
+# host-loopback addresses, or onboarding crash-loops on "connection refused"
+# against its own container's 127.0.0.1. Default to CP_URL/EDGE unchanged (correct
+# for a genuinely remote plane) but let an operator override for the co-located case.
+CONTAINER_CP_URL="${CONTAINER_CP_URL:-$CP_URL}"
+CONTAINER_EDGE="${CONTAINER_EDGE:-$EDGE}"
 TENANT="${TENANT:-a2a-demo}"
 EDGE_ADMIN_URL="${CT_CP_EDGE_ADMIN_URL:-}"
 EDGE_ADMIN_TOKEN="${CT_CP_EDGE_ADMIN_TOKEN:-}"
@@ -75,9 +84,9 @@ fi
 say "Starting the bridge + Caddy origin + Browser-Plane agent"
 A2A_JOIN_TOKEN="$TOKEN" \
 A2A_AGENT_TOKEN="$A2A_AGENT_TOKEN" \
-A2A_AGENT_EDGE="$EDGE" \
-A2A_AGENT_CP_URL="$CP_URL" \
-A2A_AGENT_EDGE_CERT_URL="${A2A_AGENT_EDGE_CERT_URL:-$CP_URL}" \
+A2A_AGENT_EDGE="$CONTAINER_EDGE" \
+A2A_AGENT_CP_URL="$CONTAINER_CP_URL" \
+A2A_AGENT_EDGE_CERT_URL="${A2A_AGENT_EDGE_CERT_URL:-$CONTAINER_CP_URL}" \
 A2A_CERT_DIR="$A2A_CERT_DIR" \
   $COMPOSE up --build -d
 
