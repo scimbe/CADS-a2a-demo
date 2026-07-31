@@ -61,8 +61,13 @@ services:
       # startup from A2A_AGENT_CP_URL's /pki/ca, see BobIdentity::from_env in src/main.rs.
       - A2A_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL, needed to fetch the Mesh-Plane CA root for the TCP front-door handover}
       - A2A_CHANNEL_FRONT_DOOR=${A2A_CHANNEL_FRONT_DOOR:?edge front-door host:port, e.g. edge:443}
-    ports:
-      - "8790:8790"   # local smoke test only; the public path goes through Caddy/the agent
+    # No `ports:` mapping -- matches CADS-flappy-demo/CADS-cookbook-demo's own bridge
+    # services, which never publish a host port either. This service was previously
+    # published on 0.0.0.0:8790 (a real regression: plain HTTP, no TLS, publicly
+    # reachable, bypassing Caddy/the edge entirely -- caught live on the production
+    # host). The local-only smoke test in the header comment above still works via
+    # `docker run -p 127.0.0.1:8790:8790 ...` against a one-off container, never a
+    # host-wide port on the actual deployed service.
     depends_on:
       - a2a-demo-alice
     restart: unless-stopped
