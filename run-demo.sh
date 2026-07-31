@@ -25,6 +25,10 @@ EDGE="${EDGE:-${A2A_AGENT_EDGE:-127.0.0.1:4433}}"
 # for a genuinely remote plane) but let an operator override for the co-located case.
 CONTAINER_CP_URL="${CONTAINER_CP_URL:-$CP_URL}"
 CONTAINER_EDGE="${CONTAINER_EDGE:-$EDGE}"
+# TCP-:443 handover rung (ct-agent's Ladder fallback: QUIC-relay -> TCP-over-front-door)
+# -- same container-vs-host distinction as CONTAINER_EDGE above. Default assumes the
+# plane's edge is reachable as "edge" on the compose network (true when co-located).
+CONTAINER_FRONT_DOOR="${CONTAINER_FRONT_DOOR:-${A2A_CHANNEL_FRONT_DOOR:-edge:443}}"
 TENANT="${TENANT:-a2a-demo}"
 EDGE_ADMIN_URL="${CT_CP_EDGE_ADMIN_URL:-}"
 EDGE_ADMIN_TOKEN="${CT_CP_EDGE_ADMIN_TOKEN:-}"

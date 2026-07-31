@@ -22,6 +22,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::convert::Infallible;
+use std::io::Read;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -62,10 +63,45 @@ struct BobIdentity {
     channel_id_hex: String,
     broker_addr: String,
     relay_addr: String,
+    /// TCP-:443 handover rung (the `Ladder` fallback: QUIC-relay -> TCP-over-front-door)
+    /// -- both fields required together, mirrors agent-alice's alice-entrypoint.sh.
+    front_door_addr: String,
+    front_door_cert_hex: String,
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
+/// Fetches the real Mesh-Plane CA root from the control plane's own published
+/// `GET /pki/ca` -- the same trust anchor
+/// `crates/edge/src/pki.rs::build_channel_front_door_acceptor` issues the :443 channel
+/// front-door's leaf cert from (confirmed by reading both sides directly). Reached over
+/// the compose-internal network (plain HTTP, never TLS here), once at startup -- not
+/// re-fetched per round.
+fn fetch_front_door_cert_hex(cp_url: &str) -> Result<String, String> {
+    let url = format!("{}/pki/ca", cp_url.trim_end_matches('/'));
+    let resp = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("fetching {url}: {e}"))?;
+    let mut der = Vec::new();
+    resp.into_reader()
+        .read_to_end(&mut der)
+        .map_err(|e| format!("reading {url} response: {e}"))?;
+    if der.is_empty() {
+        return Err(format!("empty /pki/ca response from {cp_url}, refusing to start without a front-door trust anchor"));
+    }
+    Ok(hex_encode(&der))
 }
 
 impl BobIdentity {
     fn from_env() -> Result<Self, String> {
+        let cp_url = required_env("A2A_AGENT_CP_URL")?;
+        let front_door_cert_hex = fetch_front_door_cert_hex(&cp_url)?;
         Ok(Self {
             holder_key_hex: required_env("A2A_BOB_HOLDER_KEY")?,
             noise_key_hex: required_env("A2A_BOB_NOISE_KEY")?,
@@ -74,6 +110,8 @@ impl BobIdentity {
             channel_id_hex: required_env("A2A_CHANNEL_ID")?,
             broker_addr: required_env("A2A_CHANNEL_BROKER")?,
             relay_addr: required_env("A2A_CHANNEL_RELAY")?,
+            front_door_addr: required_env("A2A_CHANNEL_FRONT_DOOR")?,
+            front_door_cert_hex,
         })
     }
 }
@@ -115,6 +153,10 @@ async fn run_round(st: Arc<BridgeState>, message: String) {
         .env("CT_CHANNEL_NOISE_KEY", &st.bob.noise_key_hex)
         .env("CT_CHANNEL_GRANT", &st.bob.grant_hex)
         .env("CT_CHANNEL_CALL_SERVICE", SERVICE)
+        // TCP-:443 handover rung -- see BobIdentity::from_env's fetch_front_door_cert_hex.
+        // Without these, ct-agent's RelayFallback only ever tries the QUIC-only rung.
+        .env("CT_CHANNEL_FRONT_DOOR", &st.bob.front_door_addr)
+        .env("CT_CHANNEL_FRONT_DOOR_CERT", &st.bob.front_door_cert_hex)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

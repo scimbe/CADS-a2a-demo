@@ -19,3 +19,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "time", "sync", "process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+# Plain-HTTP-only client (default-features off drops the tls backends we don't need --
+# the control plane is reached over the compose-internal network, never TLS here) used
+# once at startup to fetch the real Mesh-Plane CA root from GET /pki/ca, the same trust
+# anchor crates/edge/src/pki.rs::build_channel_front_door_acceptor issues the :443
+# channel front-door's leaf cert from. Wires up the TCP-front-door handover rung for
+# agent-bob's spawned initiator, same as agent-alice's alice-entrypoint.sh does.
+ureq = { version = "2", default-features = false }

@@ -30,13 +30,19 @@ services:
       context: .
       dockerfile: Alice.Dockerfile
       args:
-        - CT_AGENT_REF=${CT_AGENT_REF:-3a53877407cd4f72b9afa32b748549297f43732b}
+        - CT_AGENT_REF=${CT_AGENT_REF:-947c3a5aa2f11eaf8fc76c88b5f6b8b81e0c53d5}
     environment:
       - CT_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port, e.g. edge:4435}
       - CT_CHANNEL_RELAY=${A2A_CHANNEL_RELAY:?edge relay host:port, e.g. edge:4436}
       - CT_CHANNEL_HOLDER_KEY=${A2A_ALICE_HOLDER_KEY:?see provision.md}
       - CT_CHANNEL_NOISE_KEY=${A2A_ALICE_NOISE_KEY:?see provision.md}
       - CT_CHANNEL_GRANT=${A2A_ALICE_GRANT:?see provision.md}
+      # TCP-:443 handover rung: alice-entrypoint.sh fetches the real Mesh-Plane CA root from
+      # CT_AGENT_CP_URL's /pki/ca and derives CT_CHANNEL_FRONT_DOOR_CERT at startup -- both
+      # env vars below are what makes the Ladder fallback (QUIC-relay -> TCP front-door)
+      # active instead of the QUIC-only rung.
+      - CT_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL, needed to fetch the Mesh-Plane CA root for the TCP front-door handover}
+      - CT_CHANNEL_FRONT_DOOR=${A2A_CHANNEL_FRONT_DOOR:?edge front-door host:port, e.g. edge:443}
     restart: unless-stopped
 
   a2a-demo-bridge:
@@ -51,6 +57,10 @@ services:
       - A2A_BOB_GRANT=${A2A_BOB_GRANT:?see provision.md}
       - A2A_BOB_HOLDER_PUBKEY=${A2A_BOB_HOLDER_PUBKEY:?see provision.md}
       - A2A_CHANNEL_ID=${A2A_CHANNEL_ID:?see provision.md}
+      # TCP-:443 handover rung for agent-bob's spawned initiator -- fetched once at
+      # startup from A2A_AGENT_CP_URL's /pki/ca, see BobIdentity::from_env in src/main.rs.
+      - A2A_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL, needed to fetch the Mesh-Plane CA root for the TCP front-door handover}
+      - A2A_CHANNEL_FRONT_DOOR=${A2A_CHANNEL_FRONT_DOOR:?edge front-door host:port, e.g. edge:443}
     ports:
       - "8790:8790"   # local smoke test only; the public path goes through Caddy/the agent
     depends_on:
@@ -76,7 +86,7 @@ services:
       context: .
       dockerfile: Agent.Dockerfile
       args:
-        - CT_AGENT_REF=${CT_AGENT_REF:-3a53877407cd4f72b9afa32b748549297f43732b}
+        - CT_AGENT_REF=${CT_AGENT_REF:-947c3a5aa2f11eaf8fc76c88b5f6b8b81e0c53d5}
     environment:
       - CT_AGENT_MODE=browser
       - CT_AGENT_HOSTNAME=a2a-demo.bunsenbrenner.org
