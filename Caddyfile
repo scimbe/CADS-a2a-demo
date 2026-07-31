@@ -1,0 +1,17 @@
+# Origin for the a2a-demo.bunsenbrenner.org demo. Caddy terminates TLS; the bridge IS
+# the whole web server (dashboard + SSE + the round-triggering endpoint), so this
+# Caddyfile's only job is TLS termination + reverse-proxying everything to it -- same
+# shape as CADS-auction-demo's Caddyfile.
+#
+# The cert is issued CORE-side (CADS-Tunnel's scripts/authorize-pipeline.sh, deSEC
+# DNS-01) and mounted in as static files -- never an ACME client or DNS credential here.
+
+a2a-demo.bunsenbrenner.org {
+	reverse_proxy a2a-demo-bridge:8790
+	encode gzip
+	tls /certs/fullchain.pem /certs/privkey.pem
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+	}
+}

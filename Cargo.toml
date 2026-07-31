@@ -1,0 +1,21 @@
+[package]
+name = "a2a-demo-bridge"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[[bin]]
+name = "a2a-demo-bridge"
+path = "src/main.rs"
+
+[dependencies]
+# No ct-common/ct-agent crate dependency at all -- unlike CADS-auction-demo, this bridge
+# never links CADS-Tunnel code. It orchestrates two REAL, separate `ct-agent channel`
+# OS processes (the actual binary, spawned via std::process::Command) exactly the way
+# the docs' verified _tutorials/first-channel.md walkthrough does by hand -- the bridge
+# is just the thing clicking the buttons a human would.
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "time", "sync", "process"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
