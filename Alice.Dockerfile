@@ -10,7 +10,7 @@ FROM rust:1-slim-bookworm AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-ARG CT_AGENT_REF=71a31f34f3db111993a100b61230dc0404cc53cf
+ARG CT_AGENT_REF=1305b4eaf94bb36ad9a4c57d420135eb60e19bd0
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

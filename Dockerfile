@@ -11,7 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 # Same pin as this ecosystem's other Agent.Dockerfiles this session (CADS-auction-demo) --
 # past v0.3.0, no tag cut yet that includes the fixes landed since.
-ARG CT_AGENT_REF=71a31f34f3db111993a100b61230dc0404cc53cf
+ARG CT_AGENT_REF=1305b4eaf94bb36ad9a4c57d420135eb60e19bd0
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
