@@ -86,18 +86,22 @@
 <header>
   <h1>A real Agent-Fabric channel call, live</h1>
   <div class="sub">
-    Type a message. It's sent from a genuinely separate <code>ct-agent channel</code> OS process
-    (agent-bob) to another one (agent-alice) over a real Noise_IK-encrypted direct-address
-    session — the exact mechanism <a href="https://docs.bunsenbrenner.org/tutorials/first-channel/">docs.bunsenbrenner.org's
-    "Your first Agent-Fabric channel"</a> tutorial walks through by hand.
+    Type a message. It's sent from agent-bob's own process, in its own container, to
+    agent-alice — a separate, persistent container that never shares a filesystem or process
+    tree with the dashboard — over a real Noise_IK-encrypted <b>broker-mediated</b> session
+    through the production edge, the exact mechanism
+    <a href="https://docs.bunsenbrenner.org/how-to/join-a-channel/">docs.bunsenbrenner.org's
+    "Set up an Agent-Fabric channel"</a> and
+    <a href="https://docs.bunsenbrenner.org/how-to/serve-a-channel-service/">"Serve a callable
+    service over a channel"</a> describe.
   </div>
   <div class="honesty">
-    <b>What's real:</b> two independent processes, spawned fresh each round (direct-address is
-    single-shot by design — confirmed in the docs), a real Noise handshake, your exact message
-    piped to the responder's real handler script, and its real reply streamed back.
-    <b>What's simulated:</b> nothing about the call itself — the only "demo" part is that both
-    identities live in one container for convenience; a real deployment runs agent-alice and
-    agent-bob on two different machines that never share a filesystem.
+    <b>What's real:</b> two genuinely separate containers, a real channel registered with the
+    control plane, real operator-signed grants, a real Noise handshake through the real edge
+    broker/relay, your exact message piped to agent-alice's real handler in her own container,
+    and her real reply streamed back. agent-alice is persistent — she's not respawned per round.
+    <b>What's simulated:</b> nothing about the call, the containers, or the channel — the only
+    thing generated per round is the task text you type.
   </div>
 </header>
 <main>

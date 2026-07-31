@@ -1,7 +1,9 @@
 # Builds two binaries into one image: the real `ct-agent` (from its own standalone repo,
-# used to spawn the two channel processes each round -- see README) and this repo's
-# `a2a-demo-bridge`. Matching-base-images discipline throughout (avoids the GLIBC
-# cross-stage drift bug found in ct-agent's own docker/Dockerfile earlier this session).
+# used to spawn agent-bob's own process each round -- see README) and this repo's
+# `a2a-demo-bridge`. agent-alice runs in a completely separate container/image
+# (Alice.Dockerfile) -- this image never touches her handler or her keys. Matching-
+# base-images discipline throughout (avoids the GLIBC cross-stage drift bug found in
+# ct-agent's own docker/Dockerfile earlier this session).
 
 FROM rust:1-slim-bookworm AS ct-agent-builder
 RUN apt-get update \
@@ -33,10 +35,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ct-agent-builder /tmp/ct-agent /usr/local/bin/ct-agent
 COPY --from=bridge-builder /tmp/a2a-demo-bridge /usr/local/bin/a2a-demo-bridge
-COPY handler.sh /usr/local/bin/handler.sh
-RUN chmod +x /usr/local/bin/handler.sh
 ENV A2A_BRIDGE_LISTEN=0.0.0.0:8790
 ENV CT_AGENT_BIN=/usr/local/bin/ct-agent
-ENV A2A_HANDLER_SCRIPT=/usr/local/bin/handler.sh
 EXPOSE 8790
 ENTRYPOINT ["/usr/local/bin/a2a-demo-bridge"]

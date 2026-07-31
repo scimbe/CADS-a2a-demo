@@ -1,12 +1,18 @@
 //! CADS-a2a-demo bridge: a live web dashboard over a REAL Agent-Fabric channel call
-//! between two genuinely separate `ct-agent channel` OS processes -- the exact
-//! direct-address mechanism docs.bunsenbrenner.org's `_tutorials/first-channel.md`
-//! walks through by hand (verified there: two independent processes, a real Noise_IK
-//! handshake, a real request/response). This bridge is just what clicks the buttons a
-//! human would: it spawns the responder, parses the cert it prints, spawns the
-//! initiator with the visitor's own message on stdin, and streams every real step over
-//! SSE. No fixture, no simulated network -- direct-address is single-shot by design
-//! (confirmed in the docs), so a fresh responder process is spawned each round.
+//! between two genuinely separate containers -- `agent-alice` (this repo's
+//! `a2a-demo-alice` service, a persistent broker-mediated `ct-agent channel --serve`
+//! process) and `agent-bob` (spawned by THIS process, per visitor request, as its own
+//! `ct-agent channel` initiator). Neither shares a filesystem or process tree with the
+//! other; both are real, operator-admitted members of a real channel registered with
+//! the control plane (`POST /me/channels`), reached only through the production edge's
+//! broker/relay (`CT_CHANNEL_BROKER`/`CT_CHANNEL_RELAY`) -- the exact broker-mediated
+//! mechanism docs.bunsenbrenner.org's `_how-to/join-a-channel.md` and
+//! `_how-to/serve-a-channel-service.md` describe, click-tested live against this
+//! production edge while building this rework (see README). This bridge is just what
+//! clicks the buttons a human would: it dials agent-bob's own process with the
+//! visitor's message on stdin and streams every real step over SSE. No fixture, no
+//! simulated network, no identity minted at request time -- bob's identity is fixed and
+//! was registered with the control plane once, ahead of time (see `provision.md`).
 
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -28,68 +34,52 @@ use tokio_stream::StreamExt;
 
 const SERVICE: &str = "text_generation";
 const MAX_MESSAGE_LEN: usize = 400;
-/// How long to wait for the responder to print its listening line / cert before giving
-/// up -- generous for a cold container start, but bounded so a broken `ct-agent` binary
-/// fails loudly instead of hanging the dashboard forever.
-const RESPONDER_READY_TIMEOUT: Duration = Duration::from_secs(10);
-const INITIATOR_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long to wait for agent-bob's real reply over the broker-mediated channel --
+/// generous (broker rendezvous + a real Noise handshake through the edge relay takes
+/// longer than the direct-address path this demo used before), but bounded so a
+/// genuinely stuck admission fails loudly instead of hanging the dashboard forever.
+const INITIATOR_TIMEOUT: Duration = Duration::from_secs(25);
 
 fn ct_agent_bin() -> String {
     std::env::var("CT_AGENT_BIN").unwrap_or_else(|_| "ct-agent".to_string())
 }
 
-fn handler_path() -> String {
-    std::env::var("A2A_HANDLER_SCRIPT").unwrap_or_else(|_| "/usr/local/bin/handler.sh".to_string())
+fn required_env(name: &str) -> Result<String, String> {
+    std::env::var(name).map_err(|_| format!("{name} must be set (see README/provision.md)"))
 }
 
-/// One side's Noise (X25519) identity: what `ct-agent channel init` actually printed,
-/// parsed from its real stdout -- never fabricated locally, so the exact same key
-/// material `ct-agent` itself would use is what this bridge hands back to it.
-#[derive(Clone)]
-struct Identity {
-    noise_priv_hex: String,
-    noise_pub_hex: String,
+/// Agent-bob's fixed, real, pre-registered channel identity -- a real operator-signed
+/// grant for a real holder key registered with the control plane via `POST
+/// /me/channels/:channel/members`, never minted fresh per process or per request.
+/// Loaded once at startup, not re-derived: unlike the identity this bridge used to mint
+/// itself, these values MUST match what was actually registered, so generating a fresh
+/// keypair here would just produce a holder the edge doesn't recognize.
+struct BobIdentity {
+    holder_key_hex: String,
+    noise_key_hex: String,
+    grant_hex: String,
+    holder_pubkey_hex: String,
+    channel_id_hex: String,
+    broker_addr: String,
+    relay_addr: String,
 }
 
-/// Parses `ct-agent channel init`'s real stdout shape (verified against a real captured
-/// run and against docs.bunsenbrenner.org's own captured run in `_tutorials/first-channel.md`):
-/// ```text
-/// #   noise_pubkey  = <hex>
-/// export CT_CHANNEL_NOISE_KEY=<hex>
-/// ```
-/// The comment lines are `#`-prefixed before the field name, so a prefix-match on
-/// "noise_pubkey" itself (after trim) misses them -- split on `=` instead.
-fn parse_channel_init_output(text: &str, label: &str) -> Result<Identity, String> {
-    let noise_pub_hex = text
-        .lines()
-        .find(|l| l.contains("noise_pubkey") && l.contains('='))
-        .and_then(|l| l.split('=').nth(1))
-        .map(|s| s.trim().to_string())
-        .ok_or_else(|| format!("could not find noise_pubkey in `ct-agent channel init` output for {label}: {text}"))?;
-    let noise_priv_hex = text
-        .lines()
-        .find(|l| l.contains("CT_CHANNEL_NOISE_KEY="))
-        .and_then(|l| l.split("CT_CHANNEL_NOISE_KEY=").nth(1))
-        .map(|s| s.trim().to_string())
-        .ok_or_else(|| format!("could not find CT_CHANNEL_NOISE_KEY in `ct-agent channel init` output for {label}: {text}"))?;
-    Ok(Identity { noise_priv_hex, noise_pub_hex })
-}
-
-async fn mint_identity(label: &str) -> Result<Identity, String> {
-    let out = Command::new(ct_agent_bin())
-        .args(["channel", "init"])
-        .output()
-        .await
-        .map_err(|e| format!("spawning `ct-agent channel init` for {label}: {e}"))?;
-    if !out.status.success() {
-        return Err(format!("`ct-agent channel init` for {label} exited {}: {}", out.status, String::from_utf8_lossy(&out.stderr)));
+impl BobIdentity {
+    fn from_env() -> Result<Self, String> {
+        Ok(Self {
+            holder_key_hex: required_env("A2A_BOB_HOLDER_KEY")?,
+            noise_key_hex: required_env("A2A_BOB_NOISE_KEY")?,
+            grant_hex: required_env("A2A_BOB_GRANT")?,
+            holder_pubkey_hex: required_env("A2A_BOB_HOLDER_PUBKEY")?,
+            channel_id_hex: required_env("A2A_CHANNEL_ID")?,
+            broker_addr: required_env("A2A_CHANNEL_BROKER")?,
+            relay_addr: required_env("A2A_CHANNEL_RELAY")?,
+        })
     }
-    parse_channel_init_output(&String::from_utf8_lossy(&out.stdout), label)
 }
 
 struct BridgeState {
-    alice: Identity, // responder ("agent-alice", serves text_generation)
-    bob: Identity,   // initiator ("agent-bob", calls it)
+    bob: BobIdentity,
     round: AtomicU32,
     busy: Arc<Mutex<()>>,
     tx: broadcast::Sender<String>,
@@ -106,85 +96,24 @@ fn is_log_line(l: &str) -> bool {
 async fn run_round(st: Arc<BridgeState>, message: String) {
     let tx = st.tx.clone();
     let round = st.round.fetch_add(1, Ordering::SeqCst) + 1;
-    // 127.0.0.1 only (never exposed beyond this container) -- a fresh port per round
-    // sidesteps TIME_WAIT on the previous round's now-exited responder.
-    let port = 19700 + (round % 500);
-    let addr = format!("127.0.0.1:{port}");
 
     broadcast_event(&tx, json!({"type": "round_start", "round": round, "message": message})).await;
 
-    // --- spawn the responder (accept side, direct-address, single-shot) -------------
-    broadcast_event(&tx, json!({"type": "responder_starting", "addr": addr})).await;
-    let mut responder = match Command::new(ct_agent_bin())
-        .arg("channel")
-        .env("CT_CHANNEL_ROLE", "accept")
-        .env("CT_CHANNEL_ADDR", &addr)
-        .env("CT_CHANNEL_NOISE_KEY", &st.alice.noise_priv_hex)
-        .env("CT_CHANNEL_PEER_NOISE_KEY", &st.bob.noise_pub_hex)
-        .env("CT_CHANNEL_SERVE", "1")
-        .env("CT_AGENT_SERVICE_HANDLER_CMD", handler_path())
-        .env("CT_AGENT_SERVICES", SERVICE)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            broadcast_event(&tx, json!({"type": "round_error", "message": format!("spawning responder: {e}")})).await;
-            return;
-        }
-    };
-    // `ct-agent channel`'s own "ct-agent channel: ..." status/log lines -- including the
-    // one naming the cert a dial needs -- go to STDERR, not stdout (confirmed live: piped
-    // stdout was empty the whole run, every line showed up on stderr instead). Only the
-    // actual handler reply, for the *initiator* below, comes back on stdout.
-    let mut responder_err = BufReader::new(responder.stderr.take().expect("piped")).lines();
-
-    // Wait for the responder's real printed line naming its own cert (the exact hex a
-    // real dial needs) -- not a fixed sleep, so this genuinely tracks when it's ready.
-    let cert_hex = match tokio::time::timeout(RESPONDER_READY_TIMEOUT, async {
-        loop {
-            match responder_err.next_line().await {
-                Ok(Some(line)) => {
-                    if is_log_line(&line) {
-                        broadcast_event(&tx, json!({"type": "responder_log", "line": line})).await;
-                    }
-                    if let Some(idx) = line.find("CT_CHANNEL_PEER_CERT=") {
-                        return Some(line[idx + "CT_CHANNEL_PEER_CERT=".len()..].trim().to_string());
-                    }
-                }
-                Ok(None) => return None, // responder exited before printing a cert -- real failure
-                Err(_) => return None,
-            }
-        }
-    })
-    .await
-    {
-        Ok(Some(cert)) => cert,
-        Ok(None) => {
-            let _ = responder.kill().await;
-            broadcast_event(&tx, json!({"type": "round_error", "message": "responder exited before it was ready (see responder_log lines above)"})).await;
-            return;
-        }
-        Err(_) => {
-            let _ = responder.kill().await;
-            broadcast_event(&tx, json!({"type": "round_error", "message": "timed out waiting for the responder to start"})).await;
-            return;
-        }
-    };
-    broadcast_event(&tx, json!({"type": "responder_listening", "addr": addr, "cert_len": cert_hex.len()})).await;
-
-    // --- spawn the initiator (calls it once, with the visitor's own message) --------
-    broadcast_event(&tx, json!({"type": "initiator_dialing", "addr": addr})).await;
+    // --- dial agent-bob's own process: broker-mediated, through the real edge --------
+    // This is a genuinely separate process from agent-alice's container -- it reaches
+    // the service only via CT_CHANNEL_BROKER/CT_CHANNEL_RELAY (the production edge),
+    // never a local address. `CT_CHANNEL_CALL_SERVICE` + stdin is exactly the pattern
+    // docs.bunsenbrenner.org's serve-a-channel-service.md step 4 walks through by hand.
+    broadcast_event(&tx, json!({"type": "initiator_dialing", "broker": st.bob.broker_addr})).await;
     let mut initiator = match Command::new(ct_agent_bin())
         .arg("channel")
         .env("CT_CHANNEL_ROLE", "initiate")
-        .env("CT_CHANNEL_ADDR", &addr)
-        .env("CT_CHANNEL_NOISE_KEY", &st.bob.noise_priv_hex)
-        .env("CT_CHANNEL_PEER_NOISE_KEY", &st.alice.noise_pub_hex)
-        .env("CT_CHANNEL_PEER_CERT", &cert_hex)
+        .env("CT_CHANNEL_BROKER", &st.bob.broker_addr)
+        .env("CT_CHANNEL_RELAY", &st.bob.relay_addr)
+        .env("CT_CHANNEL_RELAY_ONLY", "1")
+        .env("CT_CHANNEL_HOLDER_KEY", &st.bob.holder_key_hex)
+        .env("CT_CHANNEL_NOISE_KEY", &st.bob.noise_key_hex)
+        .env("CT_CHANNEL_GRANT", &st.bob.grant_hex)
         .env("CT_CHANNEL_CALL_SERVICE", SERVICE)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -194,8 +123,7 @@ async fn run_round(st: Arc<BridgeState>, message: String) {
     {
         Ok(c) => c,
         Err(e) => {
-            let _ = responder.kill().await;
-            broadcast_event(&tx, json!({"type": "round_error", "message": format!("spawning initiator: {e}")})).await;
+            broadcast_event(&tx, json!({"type": "round_error", "message": format!("spawning agent-bob: {e}")})).await;
             return;
         }
     };
@@ -206,16 +134,16 @@ async fn run_round(st: Arc<BridgeState>, message: String) {
         // the tutorial's `echo "..." | ct-agent channel` shape.
     }
     // Two independent streams to drain concurrently: stderr carries `ct-agent`'s own
-    // "ct-agent channel: ..." status lines (including "connected to..."), stdout carries
-    // the handler's real reply and nothing else -- confirmed live by piping each to a
-    // separate file and inspecting both.
+    // "ct-agent channel: ..." status lines (including the real broker-rendezvous and
+    // relay-fallback lines), stdout carries agent-alice's real reply -- relayed back
+    // through the edge from a container this process never touches directly.
     let mut initiator_err = BufReader::new(initiator.stderr.take().expect("piped")).lines();
     let mut initiator_out = BufReader::new(initiator.stdout.take().expect("piped")).lines();
     let mut reply: Option<String> = None;
     let wait_result = tokio::time::timeout(INITIATOR_TIMEOUT, async {
         let stderr_task = async {
             while let Ok(Some(line)) = initiator_err.next_line().await {
-                if line.contains("connected to") {
+                if is_log_line(&line) && (line.contains("relay") || line.contains("brokered")) {
                     broadcast_event(&tx, json!({"type": "channel_connected", "line": line})).await;
                 } else {
                     broadcast_event(&tx, json!({"type": "initiator_log", "line": line})).await;
@@ -234,18 +162,16 @@ async fn run_round(st: Arc<BridgeState>, message: String) {
     })
     .await;
 
-    let _ = responder.wait().await; // single-shot: exits right after serving this one session
-
     match wait_result {
         Ok(Ok(status)) if status.success() => match reply {
             Some(r) => broadcast_event(&tx, json!({"type": "reply_received", "reply": r})).await,
-            None => broadcast_event(&tx, json!({"type": "round_error", "message": "initiator exited 0 but printed no reply line"})).await,
+            None => broadcast_event(&tx, json!({"type": "round_error", "message": "agent-bob exited 0 but printed no reply line"})).await,
         },
-        Ok(Ok(status)) => broadcast_event(&tx, json!({"type": "round_error", "message": format!("initiator exited with {status}")})).await,
-        Ok(Err(e)) => broadcast_event(&tx, json!({"type": "round_error", "message": format!("waiting on initiator: {e}")})).await,
+        Ok(Ok(status)) => broadcast_event(&tx, json!({"type": "round_error", "message": format!("agent-bob exited with {status}")})).await,
+        Ok(Err(e)) => broadcast_event(&tx, json!({"type": "round_error", "message": format!("waiting on agent-bob: {e}")})).await,
         Err(_) => {
             let _ = initiator.kill().await;
-            broadcast_event(&tx, json!({"type": "round_error", "message": "timed out waiting for the initiator's reply"})).await;
+            broadcast_event(&tx, json!({"type": "round_error", "message": "timed out waiting for agent-alice's reply through the real edge"})).await;
         }
     }
     broadcast_event(&tx, json!({"type": "round_done", "round": round})).await;
@@ -264,8 +190,9 @@ async fn run_handler(State(st): State<Arc<BridgeState>>, Json(req): Json<RunReq>
     if message.len() > MAX_MESSAGE_LEN {
         return (axum::http::StatusCode::BAD_REQUEST, format!("message must be <= {MAX_MESSAGE_LEN} chars")).into_response();
     }
-    // Only one round at a time -- two real processes + one fixed-by-counter port per
-    // round is not designed for concurrent overlapping rounds from multiple visitors.
+    // Only one round at a time -- agent-alice's persistent process accepts concurrent
+    // sessions (#200), but this demo keeps one round in flight so the dashboard's
+    // event stream stays a single legible sequence per visitor action.
     let Ok(guard) = st.busy.clone().try_lock_owned() else {
         return (axum::http::StatusCode::TOO_MANY_REQUESTS, "a round is already running, wait for round_done").into_response();
     };
@@ -288,8 +215,9 @@ async fn events_handler(State(st): State<Arc<BridgeState>>) -> Sse<impl tokio_st
 
 async fn identities_handler(State(st): State<Arc<BridgeState>>) -> impl IntoResponse {
     Json(json!({
-        "alice": {"role": "responder (serves text_generation)", "noise_pubkey": st.alice.noise_pub_hex},
-        "bob": {"role": "initiator (calls it)", "noise_pubkey": st.bob.noise_pub_hex},
+        "channel_id": st.bob.channel_id_hex,
+        "bob": {"role": "initiator (calls it, spawned by this bridge per request)", "holder_pubkey": st.bob.holder_pubkey_hex},
+        "alice": {"role": "responder (serves text_generation)", "note": "a separate, persistent container (a2a-demo-alice) -- this bridge has no handle on it, only the real channel id both were registered against"},
     }))
 }
 
@@ -299,20 +227,19 @@ async fn index_handler() -> impl IntoResponse {
     Html(INDEX_HTML)
 }
 
-async fn build_state() -> Result<Arc<BridgeState>, String> {
-    let alice = mint_identity("alice").await?;
-    let bob = mint_identity("bob").await?;
+fn build_state() -> Result<Arc<BridgeState>, String> {
+    let bob = BobIdentity::from_env()?;
     let (tx, _rx) = broadcast::channel::<String>(128);
-    Ok(Arc::new(BridgeState { alice, bob, round: AtomicU32::new(0), busy: Arc::new(Mutex::new(())), tx }))
+    Ok(Arc::new(BridgeState { bob, round: AtomicU32::new(0), busy: Arc::new(Mutex::new(())), tx }))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let state = build_state().await.map_err(|e| format!("startup: {e}"))?;
+    let state = build_state().map_err(|e| format!("startup: {e}"))?;
     eprintln!(
-        "a2a-demo-bridge: identities minted -- alice(responder)={} bob(initiator)={}",
-        &state.alice.noise_pub_hex[..16.min(state.alice.noise_pub_hex.len())],
-        &state.bob.noise_pub_hex[..16.min(state.bob.noise_pub_hex.len())]
+        "a2a-demo-bridge: agent-bob configured -- channel={} holder_pubkey={}",
+        state.bob.channel_id_hex,
+        &state.bob.holder_pubkey_hex[..16.min(state.bob.holder_pubkey_hex.len())]
     );
 
     let app = Router::new()
@@ -334,24 +261,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_a_real_captured_channel_init_output() {
-        // Byte-for-byte a real `ct-agent channel init` run captured while debugging this
-        // demo (the bug this test guards: the comment lines are `#`-prefixed, so an
-        // earlier prefix-match version of this parser silently failed to find either
-        // field and the bridge refused to start).
-        let real = "# Agent-Fabric channel identity — generated locally, keep the private keys secret.\n\
-# Give these PUBLIC keys to the channel operator (to sign your grant / register):\n\
-#   holder_pubkey = c5fbd808a8e23e8794e85672e9dea0aee69bdef6e7867e90d0beab920989c609\n\
-#   noise_pubkey  = 4ccc079c9d3175e82dd0625e30faa152c416f71eeab1e18eb212bd88732a4145\n\
-export CT_CHANNEL_HOLDER_KEY=cb22cf0cd425f6775bb15f3c6a577b91abed5730e36df7c5890e55ac74ce22f9\n\
-export CT_CHANNEL_NOISE_KEY=40a888140848c482811565111aebacdb78f6295692be73a336753399377eb9ae\n";
-        let id = parse_channel_init_output(real, "alice").expect("real captured output must parse");
-        assert_eq!(id.noise_pub_hex, "4ccc079c9d3175e82dd0625e30faa152c416f71eeab1e18eb212bd88732a4145");
-        assert_eq!(id.noise_priv_hex, "40a888140848c482811565111aebacdb78f6295692be73a336753399377eb9ae");
+    fn missing_env_errors_with_the_specific_var_name_instead_of_panicking() {
+        // Isolated from the real environment: this test must not accidentally pass
+        // because a developer's shell happens to export A2A_BOB_HOLDER_KEY.
+        let err = required_env("A2A_DEFINITELY_NOT_SET_IN_ANY_ENV").unwrap_err();
+        assert!(err.contains("A2A_DEFINITELY_NOT_SET_IN_ANY_ENV"), "error should name the missing var: {err}");
     }
 
     #[test]
-    fn missing_fields_error_instead_of_panicking() {
-        assert!(parse_channel_init_output("garbage, no keys here", "bob").is_err());
+    fn is_log_line_matches_ct_agent_status_prefix_only() {
+        assert!(is_log_line("ct-agent channel: plane-brokered Initiate (relay 1.2.3.4:4436)"));
+        assert!(!is_log_line("agent-alice (pid 123, 12:00:00): you said \"hi\""));
     }
 }

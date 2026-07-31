@@ -6,19 +6,55 @@
 #
 #   docker compose -f compose.a2a-demo.yml --env-file .env up --build -d
 #
+# `a2a-demo-alice` and `a2a-demo-bridge` (which spawns agent-bob per request) are two
+# genuinely separate containers/images -- see provision.md for how their identities and
+# the channel they both belong to were registered with the control plane, once, ahead
+# of time. Both dial ONLY the shared plane's real edge broker/relay
+# (A2A_CHANNEL_BROKER/A2A_CHANNEL_RELAY, e.g. edge:4435/edge:4436) -- neither service
+# has the other's address, container name, or filesystem.
+#
 # Local-only smoke test (no tunnel, no cert) -- build/run the bridge image directly,
 # do NOT use `docker compose up <one-service>` (Compose interpolates every service's
 # required env vars up front, so a single-service `up` fails before it even starts --
-# the same real gotcha CADS-auction-demo's README documents):
+# the same real gotcha CADS-auction-demo's README documents). This still needs a
+# reachable edge broker/relay (real or a local CADS-Tunnel testbed) -- there is no
+# fixture path anymore:
 #   docker build -t a2a-demo-bridge .
-#   docker run --rm -p 8790:8790 a2a-demo-bridge
+#   docker run --rm --network ${PLANE_NETWORK:-ct-selfhost_default} -p 8790:8790 \
+#     -e A2A_BOB_HOLDER_KEY=... -e A2A_BOB_NOISE_KEY=... -e A2A_BOB_GRANT=... \
+#     -e A2A_BOB_HOLDER_PUBKEY=... -e A2A_CHANNEL_ID=... \
+#     -e A2A_CHANNEL_BROKER=edge:4435 -e A2A_CHANNEL_RELAY=edge:4436 a2a-demo-bridge
 services:
+  a2a-demo-alice:
+    build:
+      context: .
+      dockerfile: Alice.Dockerfile
+      args:
+        - CT_AGENT_REF=${CT_AGENT_REF:-3a53877407cd4f72b9afa32b748549297f43732b}
+    environment:
+      - CT_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port, e.g. edge:4435}
+      - CT_CHANNEL_RELAY=${A2A_CHANNEL_RELAY:?edge relay host:port, e.g. edge:4436}
+      - CT_CHANNEL_HOLDER_KEY=${A2A_ALICE_HOLDER_KEY:?see provision.md}
+      - CT_CHANNEL_NOISE_KEY=${A2A_ALICE_NOISE_KEY:?see provision.md}
+      - CT_CHANNEL_GRANT=${A2A_ALICE_GRANT:?see provision.md}
+    restart: unless-stopped
+
   a2a-demo-bridge:
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      - A2A_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port, e.g. edge:4435}
+      - A2A_CHANNEL_RELAY=${A2A_CHANNEL_RELAY:?edge relay host:port, e.g. edge:4436}
+      - A2A_BOB_HOLDER_KEY=${A2A_BOB_HOLDER_KEY:?see provision.md}
+      - A2A_BOB_NOISE_KEY=${A2A_BOB_NOISE_KEY:?see provision.md}
+      - A2A_BOB_GRANT=${A2A_BOB_GRANT:?see provision.md}
+      - A2A_BOB_HOLDER_PUBKEY=${A2A_BOB_HOLDER_PUBKEY:?see provision.md}
+      - A2A_CHANNEL_ID=${A2A_CHANNEL_ID:?see provision.md}
     ports:
       - "8790:8790"   # local smoke test only; the public path goes through Caddy/the agent
+    depends_on:
+      - a2a-demo-alice
     restart: unless-stopped
 
   a2a-demo-origin:
