@@ -175,6 +175,9 @@ async fn run_round(st: Arc<BridgeState>, message: String) {
         // Without these, ct-agent's RelayFallback only ever tries the QUIC-only rung.
         .env("CT_CHANNEL_FRONT_DOOR", &st.bob.front_door_addr)
         .env("CT_CHANNEL_FRONT_DOOR_CERT", &st.bob.front_door_cert_hex)
+        // #104: opt in to the in-band relay->direct upgrade, mirrors alice's
+        // CT_CHANNEL_DIRECT_UPGRADE=1 (Alice.Dockerfile). No new port either side.
+        .env("CT_CHANNEL_DIRECT_UPGRADE", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

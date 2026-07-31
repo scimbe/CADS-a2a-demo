@@ -10,7 +10,7 @@ FROM rust:1-slim-bookworm AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-ARG CT_AGENT_REF=d012df4efc9f492ce13e406d3724a85aeddd95ac
+ARG CT_AGENT_REF=71a31f34f3db111993a100b61230dc0404cc53cf
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -38,4 +38,12 @@ ENV CT_CHANNEL_SERVE=1
 # only add a second TRANSPORT rung (TCP-:443) to REACH that relay, they do not open a
 # peer-facing listener.
 ENV CT_CHANNEL_RELAY_ONLY=1
+# #104: opt in to the in-band relay->direct upgrade. Orthogonal to CT_CHANNEL_RELAY_ONLY
+# above -- this never advertises or opens a new port, it only negotiates a candidate
+# in-band, over the already-open, already-authenticated relay stream. On this specific
+# deployment (alice, bob, and the edge all on one host) the edge-observed reflexive
+# address is a private one, so the upgrade correctly refuses itself (SSRF guard) and the
+# session stays on the relay -- but the real, tested wiring is genuinely live in
+# production, ready for the day two members sit on genuinely separate networks.
+ENV CT_CHANNEL_DIRECT_UPGRADE=1
 CMD ["/usr/local/bin/alice-entrypoint.sh"]
