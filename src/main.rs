@@ -131,6 +131,24 @@ fn is_log_line(l: &str) -> bool {
     l.starts_with("ct-agent channel:")
 }
 
+/// Which relay-ladder rung actually carried this session, parsed from ct-agent's own
+/// `"ct-agent channel: relay leg via ..."` status lines (added upstream specifically for
+/// this dashboard, scimbe/ct-agent#106). `None` for every other line -- this is never
+/// "direct": both channel members are relay-only by design, so it only distinguishes
+/// the QUIC relay port from the `:443` front door.
+fn relay_transport_from_log_line(l: &str) -> Option<&'static str> {
+    if !is_log_line(l) || !l.contains("relay leg via") {
+        return None;
+    }
+    if l.contains("front door") {
+        Some("tcp_443")
+    } else if l.contains("QUIC") {
+        Some("quic")
+    } else {
+        None
+    }
+}
+
 async fn run_round(st: Arc<BridgeState>, message: String) {
     let tx = st.tx.clone();
     let round = st.round.fetch_add(1, Ordering::SeqCst) + 1;
@@ -185,7 +203,15 @@ async fn run_round(st: Arc<BridgeState>, message: String) {
     let wait_result = tokio::time::timeout(INITIATOR_TIMEOUT, async {
         let stderr_task = async {
             while let Ok(Some(line)) = initiator_err.next_line().await {
-                if is_log_line(&line) && (line.contains("relay") || line.contains("brokered")) {
+                if let Some(transport) = relay_transport_from_log_line(&line) {
+                    // #106: which rung of ct-agent's relay ladder actually carried this
+                    // session -- the real, honest signal for the dashboard's animation.
+                    // Never "direct" here: agent-bob and agent-alice are both
+                    // CT_CHANNEL_RELAY_ONLY=1 by design (see Alice.Dockerfile) so every
+                    // round's data always crosses the edge relay, never peer-to-peer --
+                    // this only distinguishes QUIC-relay-port from the :443 front door.
+                    broadcast_event(&tx, json!({"type": "transport", "transport": transport, "line": line})).await;
+                } else if is_log_line(&line) && (line.contains("relay") || line.contains("brokered")) {
                     broadcast_event(&tx, json!({"type": "channel_connected", "line": line})).await;
                 } else {
                     broadcast_event(&tx, json!({"type": "initiator_log", "line": line})).await;
@@ -314,5 +340,19 @@ mod tests {
     fn is_log_line_matches_ct_agent_status_prefix_only() {
         assert!(is_log_line("ct-agent channel: plane-brokered Initiate (relay 1.2.3.4:4436)"));
         assert!(!is_log_line("agent-alice (pid 123, 12:00:00): you said \"hi\""));
+    }
+
+    #[test]
+    fn relay_transport_from_log_line_distinguishes_quic_from_the_443_front_door() {
+        assert_eq!(
+            relay_transport_from_log_line("ct-agent channel: relay leg via QUIC (172.18.0.6:4436) (#106)"),
+            Some("quic")
+        );
+        assert_eq!(
+            relay_transport_from_log_line("ct-agent channel: relay leg via the :443 front door (edge:443) (#106)"),
+            Some("tcp_443")
+        );
+        assert_eq!(relay_transport_from_log_line("ct-agent channel: plane-brokered Initiate (relay 1.2.3.4:4436)"), None);
+        assert_eq!(relay_transport_from_log_line("agent-alice (pid 123, 12:00:00): you said \"hi\""), None);
     }
 }

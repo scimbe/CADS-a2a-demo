@@ -62,6 +62,14 @@
   font-family:var(--mono);font-size:.68rem;color:var(--muted)}
  @media (prefers-reduced-motion: reduce){ .diagram-head .live i{animation:none} }
 
+ /* Which relay-ladder rung actually carried the last round -- real signal parsed from
+    ct-agent's own status lines (scimbe/ct-agent#106), never "direct": both channel
+    members are relay-only by design, so this only ever reads QUIC or :443. */
+ .transport-badge{border:1px solid var(--line);border-radius:999px;padding:.15rem .6rem;font-family:var(--mono);
+  font-size:.68rem;color:var(--muted);transition:border-color .2s ease,color .2s ease}
+ .transport-badge.quic{border-color:var(--accent2);color:var(--accent2)}
+ .transport-badge.tcp_443{border-color:var(--accent);color:var(--accent)}
+
  .controls{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:.7rem}
  .controls input[type=text]{flex:1;min-width:14rem;font:inherit;background:var(--panel);border:1px solid var(--line);
   color:var(--text);border-radius:8px;padding:.65rem .85rem}
@@ -127,6 +135,7 @@
   <div class="diagram-foot">
    <span id="channel-id">channel: &mdash;</span>
    <span>Noise_IK &middot; broker-mediated</span>
+   <span class="transport-badge" id="transport-badge" title="which edge-relay transport actually carried the last round">transport: &mdash;</span>
   </div>
  </div>
 
@@ -162,6 +171,9 @@
   const messageInput = document.getElementById("message");
   const liveIndicator = document.getElementById("live-indicator");
   const liveText = document.getElementById("live-text");
+  const transportBadge = document.getElementById("transport-badge");
+  const TRANSPORT_LABEL = { quic: "transport: QUIC (relay port)", tcp_443: "transport: TCP :443 (front door)" };
+  const EDGE_NODE_LABEL_DEFAULT = "edge (broker/relay)";
 
   function logLine(text, cls) {
     const el = document.createElement("div");
@@ -273,6 +285,9 @@
         statusEl.textContent = `round ${msg.round} started`;
         setLive(true, "dialing");
         logLine(`→ round ${msg.round}: "${msg.message}"`, "sys");
+        transportBadge.textContent = "transport: —";
+        transportBadge.className = "transport-badge";
+        NODES[1].label = EDGE_NODE_LABEL_DEFAULT;
         break;
       case "initiator_dialing":
         statusEl.textContent = "agent-bob is dialing through the real edge broker…";
@@ -285,6 +300,16 @@
       case "channel_connected":
         statusEl.textContent = "real broker/relay rendezvous — session opening";
         sendPacket([1, 2], "accent2", 900);
+        logLine("bob: " + msg.line, "sys");
+        break;
+      case "transport":
+        // Real signal from ct-agent's own status line (scimbe/ct-agent#106) about which
+        // relay-ladder rung actually carried THIS round -- never "direct": both channel
+        // members are relay-only by design (see the README's outbound-only note), so
+        // this only ever distinguishes the QUIC relay port from the :443 front door.
+        transportBadge.textContent = TRANSPORT_LABEL[msg.transport] || ("transport: " + msg.transport);
+        transportBadge.className = "transport-badge " + msg.transport;
+        NODES[1].label = EDGE_NODE_LABEL_DEFAULT + (msg.transport === "tcp_443" ? " · :443" : " · QUIC");
         logLine("bob: " + msg.line, "sys");
         break;
       case "reply_received":
