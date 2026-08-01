@@ -51,6 +51,11 @@ broker/relay host:port, e.g. `edge:4435`/`edge:4436` on the shared compose netwo
 `provision.sh` derives everything it can prove, but never guesses at your plane's edge
 address.
 
+This is the demo-operator path — one account provisions both sides. If you're one of the real
+participants (Alice, bob-1, bob-2) and want to set up your own channel with a peer directly,
+with no operator/core involvement at all — nothing exchanged beyond an email address and a
+public key — see [SELF-ORGANIZE.md](SELF-ORGANIZE.md), live-verified end to end.
+
 ## Running it
 
 ```

@@ -45,6 +45,17 @@ services:
       # active instead of the QUIC-only rung.
       - CT_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL, needed to fetch the Mesh-Plane CA root for the TCP front-door handover}
       - CT_CHANNEL_FRONT_DOOR=${A2A_CHANNEL_FRONT_DOOR:?edge front-door host:port, e.g. edge:443}
+      # #248 live debugging (2026-08-01, high prio -- bob2 organizing a real debug
+      # session with bob1): opt-in handshake-wait timing visibility
+      # (ct_common::a2a's debug_a2a_timing_enabled), already present in the pinned
+      # ct-agent build -- no code/rebuild needed, just this flag. Alice runs
+      # `ct-agent channel --serve` directly as this container's main process, so her
+      # `ct-a2a-timing: ...` lines land in `docker logs cads-a2a-demo-a2a-demo-alice-1`
+      # (not the bridge's SSE stream -- that only pipes the bridge's own SPAWNED
+      # initiator's stderr, see CT_DEBUG_A2A_TIMING on a2a-demo-bridge below for that
+      # half). Remove once bob1's #248 thread is closed -- this is diagnostic-only,
+      # not meant to stay on indefinitely.
+      - CT_DEBUG_A2A_TIMING=1
     restart: unless-stopped
 
   a2a-demo-bridge:
@@ -77,6 +88,14 @@ services:
       - A2A_S_BOB2_HOLDER_PUBKEY=${A2A_S_BOB2_HOLDER_PUBKEY:-}
       - A2A_HEARTBEAT_TOKEN_BOB1=${A2A_HEARTBEAT_TOKEN_BOB1:-}
       - A2A_HEARTBEAT_TOKEN_BOB2=${A2A_HEARTBEAT_TOKEN_BOB2:-}
+      # #248 live debugging (2026-08-01, high prio -- bob2 organizing a real debug
+      # session with bob1): opt-in handshake-wait timing visibility, inherited by the
+      # `ct-agent channel` initiator this bridge spawns per round (Command::env() adds
+      # to the inherited parent environment, doesn't replace it -- see src/main.rs's
+      # spawn call). Surfaces automatically as `initiator_log` SSE events (the bridge
+      # already streams every line of the spawned initiator's stderr verbatim). Remove
+      # once bob1's #248 thread is closed -- diagnostic-only.
+      - CT_DEBUG_A2A_TIMING=1
     # No `ports:` mapping -- matches CADS-flappy-demo/CADS-cookbook-demo's own bridge
     # services, which never publish a host port either. This service was previously
     # published on 0.0.0.0:8790 (a real regression: plain HTTP, no TLS, publicly
