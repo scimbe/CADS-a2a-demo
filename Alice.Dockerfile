@@ -15,7 +15,7 @@ RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git 
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
-    cargo build --release --locked \
+    cargo build --release --locked --jobs 1 \
     && cp target/release/ct-agent /tmp/ct-agent
 
 FROM debian:bookworm-slim AS runtime

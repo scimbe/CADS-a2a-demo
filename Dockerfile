@@ -16,17 +16,23 @@ RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git 
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
-    cargo build --release --locked \
+    cargo build --release --locked --jobs 1 \
     && cp target/release/ct-agent /tmp/ct-agent
 
 FROM rust:1-slim-bookworm AS bridge-builder
 WORKDIR /work
+# This host has zero swap and has frozen before under concurrent heavy builds --
+# BuildKit runs independent stages in parallel by default, which would run this
+# stage's rustc alongside ct-agent-builder's. The COPY below is a no-op (the file
+# is never used) whose only purpose is a data dependency that forces BuildKit to
+# sequence the two compiles instead of running them concurrently.
+COPY --from=ct-agent-builder /tmp/ct-agent /tmp/.ct-agent-builder-done
 COPY Cargo.toml Cargo.lock* ./
 COPY src src
 COPY index.html index.html
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/work/target \
-    cargo build --release \
+    cargo build --release --jobs 1 \
     && cp target/release/a2a-demo-bridge /tmp/a2a-demo-bridge
 
 FROM debian:bookworm-slim

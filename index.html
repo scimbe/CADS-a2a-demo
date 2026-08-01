@@ -43,10 +43,6 @@
  .lede{font-size:1rem;color:var(--muted2);max-width:44rem;margin:0}
  .lede a{text-decoration:none} .lede a:hover{text-decoration:underline}
 
- .callout{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--accent2);border-radius:8px;
-  padding:1.05rem 1.25rem;font-size:.9rem;color:var(--muted2);margin-top:1.5rem}
- .callout b{color:var(--text)}
-
  main{padding-top:2.4rem;padding-bottom:3rem}
  section{margin-bottom:2.6rem}
  section > h2{font-size:1.15rem;margin-bottom:.3rem}
@@ -55,21 +51,10 @@
  .diagram-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden;margin-bottom:1rem}
  .diagram-head{display:flex;justify-content:space-between;align-items:center;padding:.75rem .95rem;
   border-bottom:1px solid var(--line);font-family:var(--mono);font-size:.7rem;color:var(--muted);gap:.6rem;flex-wrap:wrap}
- .diagram-head .live{display:flex;align-items:center;gap:.4rem;color:var(--accent2)}
- .diagram-head .live i{width:6px;height:6px;border-radius:50%;background:var(--accent2);display:inline-block;
-  animation:pulse 1.6s ease-in-out infinite;font-style:normal}
- .diagram-head .live.idle i{background:var(--muted);animation:none}
- @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
  canvas.stage{display:block;width:100%;height:200px}
  canvas.stage.topology{height:240px}
  .diagram-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:.4rem;padding:.65rem .95rem;border-top:1px solid var(--line);
   font-family:var(--mono);font-size:.68rem;color:var(--muted)}
- @media (prefers-reduced-motion: reduce){ .diagram-head .live i{animation:none} }
-
- .transport-badge{border:1px solid var(--line);border-radius:999px;padding:.15rem .6rem;font-family:var(--mono);
-  font-size:.68rem;color:var(--muted);transition:border-color .2s ease,color .2s ease}
- .transport-badge.quic{border-color:var(--accent2);color:var(--accent2)}
- .transport-badge.tcp_443{border-color:var(--accent);color:var(--accent)}
 
  .presence-pill{border:1px solid var(--line);border-radius:999px;padding:.15rem .65rem .15rem .5rem;
   font-family:var(--mono);font-size:.68rem;color:var(--muted);display:inline-flex;align-items:center;gap:.35rem}
@@ -81,6 +66,9 @@
  .controls input[type=text]{flex:1;min-width:14rem;font:inherit;background:var(--panel);border:1px solid var(--line);
   color:var(--text);border-radius:8px;padding:.65rem .85rem}
  .controls input[type=text]:focus{outline:none;border-color:var(--accent2)}
+ .controls select{font:inherit;background:var(--panel);border:1px solid var(--line);color:var(--text);
+  border-radius:8px;padding:.65rem .85rem;flex:none}
+ .controls select:focus{outline:none;border-color:var(--accent2)}
  .action-btn{font:inherit;border:1px solid transparent;border-radius:6px;padding:.65rem 1.15rem;cursor:pointer;
   background:var(--accent);color:#20130a;font-weight:600;font-size:.92rem;transition:filter .15s ease,transform .15s ease}
  .action-btn:hover:not(:disabled){filter:brightness(1.08);transform:translateY(-1px)}
@@ -100,6 +88,7 @@
  .log .line.sys{color:var(--accent2)}
  .log .line.err{color:var(--danger)}
  .log .line.reply{color:var(--ok)}
+ .log .line.direct{color:var(--ok);font-weight:600}
 
  .offline-card{border:1px dashed var(--line);border-radius:12px;padding:1.4rem 1.3rem;color:var(--muted);
   font-size:.87rem;background:var(--panel);display:flex;align-items:center;gap:.7rem}
@@ -116,34 +105,18 @@
 <header class="hero">
  <div class="hero-inner">
   <div class="brand"><span class="flame"></span><a href="https://bunsenbrenner.org/">Bunsenbrenner.org</a><span>/ a2a-demo</span></div>
-  <div class="eyebrow">Agent-Fabric channels &middot; live, broker-mediated</div>
-  <h1>Real channel calls between genuinely separate machines</h1>
-  <p class="lede">
-   Four views of the same real mechanism: a persistent demo pairing (alice &harr; bob, always on,
-   below), and three scenarios between real, independently-operated agents — <b>bob-1</b> (behind a
-   NAT, on the core maintainer's own network) and <b>bob-2</b> (a separate host with a public IP).
-   Each scenario only appears once its participants report themselves online — there's no fixture
-   standing in for an offline peer.
-  </p>
-  <div class="callout">
-   <b>What's real:</b> every channel below is registered with the production control plane, every
-   grant is operator-signed, every session is a real Noise_IK handshake through the real edge
-   broker/relay. bob-1 and bob-2 are real processes on real, separate machines the operator doesn't
-   control at request time. <b>What's honestly limited:</b> "online" is a lightweight heartbeat
-   bob-1/bob-2 each POST every ~15s — proof they're reachable and running, not a live per-second
-   channel probe. The bob-1&harr;bob-2 scenario reflects both being online simultaneously, since
-   this dashboard has no way to trigger a session neither side of this demo controls.
-  </div>
+  <h1>Agents on separate networks, talking directly. No open ports.</h1>
+  <p class="lede">Live below: real machines, encrypted end-to-end, connecting without a relay.</p>
  </div>
 </header>
 <main>
 
  <section id="topology-section">
   <h2>Live topology</h2>
-  <p class="section-sub">All three real links at once. A solid line means that pair is currently reachable; dashed means at least one side is offline right now.</p>
+  <p class="section-sub">Solid = connected right now &middot; dashed = offline.</p>
   <div class="diagram-card">
    <div class="diagram-head">
-    <span>alice &middot; bob-1 (intern, NAT'd) &middot; bob-2 (remote, public-IP)</span>
+    <span>alice &middot; bob-1 (NAT'd) &middot; bob-2 (public-IP)</span>
     <span style="display:flex;gap:.5rem">
      <span class="presence-pill" id="pill-bob1"><i></i>bob-1</span>
      <span class="presence-pill" id="pill-bob2"><i></i>bob-2</span>
@@ -151,50 +124,17 @@
    </div>
    <canvas class="stage topology" id="topo-stage" width="900" height="240" aria-label="Topology diagram: alice, bob-1, and bob-2 as three nodes, with live/dashed edges reflecting whether each pair is currently reachable."></canvas>
    <div class="diagram-foot">
-    <span>edges reflect real heartbeat status, polled + streamed live</span>
+    <span>live heartbeat status, no polling delay</span>
    </div>
   </div>
- </section>
-
- <section id="scenario-bob1">
-  <h2>Scenario &middot; alice &harr; bob-1 (intern, behind NAT)</h2>
-  <p class="section-sub">alice dials bob-1's persistent process through the real edge broker/relay, exactly like the baseline demo below.</p>
-  <div id="bob1-online-view" hidden></div>
-  <div class="offline-card" id="bob1-offline-view"><span class="dot"></span><span id="bob1-offline-text">bob-1 hasn't sent a heartbeat yet — waiting.</span></div>
- </section>
-
- <section id="scenario-bob2">
-  <h2>Scenario &middot; alice &harr; bob-2 (remote, public IP)</h2>
-  <p class="section-sub">Same mechanism as bob-1, a different real machine on a different network.</p>
-  <div id="bob2-online-view" hidden></div>
-  <div class="offline-card" id="bob2-offline-view"><span class="dot"></span><span id="bob2-offline-text">bob-2 hasn't sent a heartbeat yet — waiting.</span></div>
- </section>
-
- <section id="scenario-bob1bob2">
-  <h2>Scenario &middot; bob-1 &harr; bob-2 (direct, no alice)</h2>
-  <p class="section-sub">Neither side is this dashboard's process — this reflects their own reported status, not a session this bridge can trigger.</p>
-  <div class="offline-card" id="bob1bob2-view"><span class="dot"></span><span id="bob1bob2-text">waiting for both to be online&hellip;</span></div>
  </section>
 
  <section id="scenario-baseline">
-  <h2>Baseline demo &middot; alice &harr; bob</h2>
-  <p class="section-sub">The original pairing: bob is spawned by this bridge itself, per request, as its own real process — always available, since it doesn't depend on anyone else's machine.</p>
-  <div class="diagram-card">
-   <div class="diagram-head">
-    <span>CHANNEL &middot; agent-bob &rarr; edge broker/relay &rarr; agent-alice</span>
-    <span class="live idle" id="live-indicator"><i></i><span id="live-text">idle</span></span>
-   </div>
-   <canvas class="stage" id="stage" width="700" height="200" aria-label="Animated diagram: a real encrypted message travels from agent-bob through the edge broker/relay to agent-alice, and her reply travels back."></canvas>
-   <div class="diagram-foot">
-    <span id="channel-id">channel: &mdash;</span>
-    <span>Noise_IK &middot; broker-mediated</span>
-    <span class="transport-badge" id="transport-badge" title="which edge-relay transport actually carried the last round">transport: &mdash;</span>
-   </div>
-  </div>
-
+  <h2>Try it</h2>
   <div class="controls">
+   <select id="participant-select"></select>
    <input type="text" id="message" placeholder="what's the airspeed velocity of an unladen swallow?" maxlength="400">
-   <button class="action-btn" id="run-btn">Send over the channel</button>
+   <button class="action-btn" id="run-btn">Send</button>
   </div>
   <div class="status-line" id="status"></div>
 
@@ -210,12 +150,9 @@
 <footer class="site-footer">
  <div class="footer-inner">
   <div class="foot">
-   Source: <a href="https://github.com/scimbe/CADS-a2a-demo">scimbe/CADS-a2a-demo</a>.
-   Channel mechanism lives in <a href="https://github.com/scimbe/ct-agent">scimbe/ct-agent</a>
-   (<code>channel_run.rs</code>), documented at
-   <a href="https://docs.bunsenbrenner.org/explanation/agent-fabric-channels/">Agent-Fabric channels</a>.
-   The 3-way cross-network test round is coordinated on
-   <a href="https://github.com/scimbe/CADS-Tunnel/issues/248">CADS-Tunnel#248</a>.
+   <a href="https://github.com/scimbe/CADS-a2a-demo">Source</a> &middot;
+   <a href="https://github.com/scimbe/ct-agent">ct-agent</a> &middot;
+   <a href="https://docs.bunsenbrenner.org/explanation/agent-fabric-channels/">How it works</a>
   </div>
  </div>
 </footer>
@@ -288,6 +225,20 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
+  // Real signal, not staged: ct-agent's own "#104 upgrade" log lines report whether the
+  // in-band relay->direct upgrade actually landed. `null` = no change to the current
+  // badge. A "staying on relay" outcome is deliberately a no-op here -- the earlier
+  // "transport" event already set the badge to whichever relay leg is actually carrying
+  // the session, so there's nothing honest to upgrade it to.
+  function directUpgradeFromLogLine(line) {
+    if (!line.includes("#104 upgrade")) return null;
+    if (line.includes("direct Noise session established")) return { cls: "direct", text: "DIRECT — no relay" };
+    if (line.includes("offering direct candidate") || line.includes("peer offered direct candidate")) {
+      return { cls: "attempting", text: "negotiating direct…" };
+    }
+    return null;
+  }
+
   // ---------- topology (combined) diagram ----------
   const topoNodes = [
     { x: 0.10, y: 0.55, label: "alice", hub: true },
@@ -308,212 +259,130 @@
     topoNodes.edges[2].live = bob1On && bob2On;
     document.getElementById("pill-bob1").classList.toggle("online", bob1On);
     document.getElementById("pill-bob2").classList.toggle("online", bob2On);
-
-    document.getElementById("bob1-online-view").hidden = !bob1On;
-    document.getElementById("bob1-offline-view").hidden = bob1On;
-    document.getElementById("bob2-online-view").hidden = !bob2On;
-    document.getElementById("bob2-offline-view").hidden = bob2On;
-
-    const bothEl = document.getElementById("bob1bob2-view");
-    const bothTextEl = document.getElementById("bob1bob2-text");
-    if (bob1On && bob2On) {
-      bothEl.classList.add("offline-card"); // keep same box styling, just recolor via text
-      bothTextEl.textContent = "bob-1 and bob-2 are both online right now — mutually reachable through the same real plane.";
-    } else if (!bob1On && !bob2On) {
-      bothTextEl.textContent = "waiting for both bob-1 and bob-2 to come online…";
-    } else {
-      bothTextEl.textContent = (bob1On ? "bob-1" : "bob-2") + " is online, waiting on " + (bob1On ? "bob-2" : "bob-1") + "…";
-    }
   }
 
-  function buildScenarioPanel(key, label) {
-    const host = document.getElementById(key + "-online-view");
-    host.innerHTML = `
-      <div class="diagram-card">
-       <div class="diagram-head">
-        <span>alice &rarr; edge broker/relay &rarr; ${label}</span>
-        <span class="live idle" id="${key}-live"><i></i><span id="${key}-live-text">idle</span></span>
-       </div>
-       <canvas class="stage" id="${key}-stage" width="700" height="200"></canvas>
-       <div class="diagram-foot">
-        <span id="${key}-channel-id">channel: &mdash;</span>
-        <span>Noise_IK &middot; broker-mediated</span>
-        <span class="transport-badge" id="${key}-transport">transport: &mdash;</span>
-       </div>
-      </div>
-      <div class="controls">
-       <input type="text" id="${key}-message" placeholder="say something to ${label}" maxlength="400">
-       <button class="action-btn" id="${key}-run">Send over the channel</button>
-      </div>
-      <div class="status-line" id="${key}-status"></div>
-      <div class="reply-box" id="${key}-reply"><div class="empty-hint">No call made yet.</div></div>
-      <div class="code-block">
-       <div class="code-block-head">live log</div>
-       <div class="log" id="${key}-log"></div>
-      </div>`;
+  // ---------- one chat, participant picker chooses who alice dials ----------
+  const PARTICIPANTS = { bob: "bob (always on)", bob1: "bob-1 (behind a NAT)", bob2: "bob-2 (public IP)" };
 
-    const nodes = [{ x: 0.08, y: 0.5, label: "alice" }, { x: 0.5, y: 0.5, label: "edge (broker/relay)" }, { x: 0.92, y: 0.5, label }];
-    const diagram = makeDiagram(document.getElementById(key + "-stage"), nodes);
-    const liveEl = document.getElementById(key + "-live"), liveTextEl = document.getElementById(key + "-live-text");
-    const statusEl = document.getElementById(key + "-status"), replyBox = document.getElementById(key + "-reply");
-    const logEl = document.getElementById(key + "-log"), runBtn = document.getElementById(key + "-run");
-    const messageInput = document.getElementById(key + "-message"), transportBadge = document.getElementById(key + "-transport");
-    const TRANSPORT_LABEL = { quic: "transport: QUIC (relay port)", tcp_443: "transport: TCP :443 (front door)" };
-
-    function setLive(on, t) { liveEl.classList.toggle("idle", !on); liveTextEl.textContent = t; }
-
-    runBtn.addEventListener("click", async () => {
-      const message = messageInput.value.trim();
-      if (!message) { statusEl.textContent = "type a message first"; return; }
-      runBtn.disabled = true;
-      logEl.innerHTML = "";
-      replyBox.className = "reply-box";
-      replyBox.innerHTML = '<div class="empty-hint">Waiting for the real call to complete&hellip;</div>';
-      statusEl.textContent = "starting…";
-      const resp = await fetch("/run/" + key, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message }) });
-      if (resp.status === 429) { statusEl.textContent = "a round is already in flight, wait for it"; runBtn.disabled = false; }
-      else if (!resp.ok) { statusEl.textContent = "rejected: " + (await resp.text()); runBtn.disabled = false; }
-    });
-
-    return {
-      onEvent(msg) {
-        switch (msg.type) {
-          case "round_start":
-            statusEl.textContent = `round ${msg.round} started`; setLive(true, "dialing");
-            logLineInto(logEl, `→ round ${msg.round}: "${msg.message}"`, "sys");
-            transportBadge.textContent = "transport: —"; transportBadge.className = "transport-badge";
-            break;
-          case "initiator_dialing":
-            statusEl.textContent = "alice is dialing through the real edge broker…";
-            diagram.send([0, 1], "accent", 1100);
-            logLineInto(logEl, `dialing, broker ${msg.broker}`, "sys");
-            break;
-          case "initiator_log": logLineInto(logEl, msg.line); break;
-          case "channel_connected":
-            statusEl.textContent = "real broker/relay rendezvous — session opening";
-            diagram.send([1, 2], "accent2", 900);
-            logLineInto(logEl, msg.line, "sys");
-            break;
-          case "transport":
-            transportBadge.textContent = TRANSPORT_LABEL[msg.transport] || ("transport: " + msg.transport);
-            transportBadge.className = "transport-badge " + msg.transport;
-            logLineInto(logEl, msg.line, "sys");
-            break;
-          case "reply_received":
-            setLive(false, "call complete"); diagram.send([2, 0], "accent2", 900);
-            replyBox.className = "reply-box win"; replyBox.textContent = msg.reply;
-            logLineInto(logEl, "reply: " + msg.reply, "reply"); statusEl.textContent = "call complete";
-            break;
-          case "round_error":
-            setLive(false, "error"); replyBox.className = "reply-box";
-            replyBox.innerHTML = '<div class="empty-hint">Error — see log below.</div>';
-            logLineInto(logEl, "ERROR: " + msg.message, "err"); statusEl.textContent = "error"; runBtn.disabled = false;
-            break;
-          case "round_done": statusEl.textContent = "round " + msg.round + " done"; runBtn.disabled = false; break;
-        }
-      },
-    };
-  }
-
-  const bob1Panel = buildScenarioPanel("bob1", "bob-1 (intern)");
-  const bob2Panel = buildScenarioPanel("bob2", "bob-2 (remote)");
-
-  // ---------- baseline alice<->bob demo (unchanged behavior) ----------
-  (function baseline() {
+  (function chat() {
     const statusEl = document.getElementById("status");
     const logEl = document.getElementById("log");
     const replyBox = document.getElementById("reply-box");
     const runBtn = document.getElementById("run-btn");
     const messageInput = document.getElementById("message");
-    const liveIndicator = document.getElementById("live-indicator");
-    const liveText = document.getElementById("live-text");
-    const transportBadge = document.getElementById("transport-badge");
-    const TRANSPORT_LABEL = { quic: "transport: QUIC (relay port)", tcp_443: "transport: TCP :443 (front door)" };
-    const diagram = makeDiagram(document.getElementById("stage"), [
-      { x: 0.08, y: 0.5, label: "agent-bob" }, { x: 0.5, y: 0.5, label: "edge (broker/relay)" }, { x: 0.92, y: 0.5, label: "agent-alice" },
-    ]);
+    const select = document.getElementById("participant-select");
+    let lastTransport = null; // null | "quic" | "tcp_443" | "direct"
+    const TRANSPORT_LABEL = { quic: "via relay (QUIC)", tcp_443: "via relay (:443)", direct: "DIRECT — no relay" };
 
-    function setLive(on, label) { liveIndicator.classList.toggle("idle", !on); liveText.textContent = label; }
+    function endpointFor(key) { return key === "bob" ? "/run" : "/run/" + key; }
+
+    // Populate the picker once with every scenario the bridge actually knows about
+    // (bob always exists), then enable/disable bob-1/bob-2 as their heartbeats come
+    // and go -- never removed once seen, just greyed out while offline.
+    function populateOptions(ids) {
+      select.innerHTML = "";
+      for (const key of ["bob", "bob1", "bob2"]) {
+        if (key !== "bob" && !ids[key]) continue; // not provisioned at all yet
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = PARTICIPANTS[key];
+        select.appendChild(opt);
+      }
+    }
+
+    function applyOnlineState(bob1On, bob2On) {
+      for (const opt of select.options) {
+        if (opt.value === "bob1") opt.disabled = !bob1On;
+        if (opt.value === "bob2") opt.disabled = !bob2On;
+      }
+    }
 
     runBtn.addEventListener("click", async () => {
       const message = messageInput.value.trim();
       if (!message) { statusEl.textContent = "type a message first"; return; }
       runBtn.disabled = true;
       logEl.innerHTML = "";
+      lastTransport = null;
       replyBox.className = "reply-box";
       replyBox.innerHTML = '<div class="empty-hint">Waiting for the real call to complete&hellip;</div>';
       statusEl.textContent = "starting…";
-      const resp = await fetch("/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message }) });
+      const resp = await fetch(endpointFor(select.value), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
       if (resp.status === 429) { statusEl.textContent = "a round is already in flight, wait for it"; runBtn.disabled = false; }
       else if (!resp.ok) { statusEl.textContent = "rejected: " + (await resp.text()); runBtn.disabled = false; }
     });
 
-    window._baselineOnEvent = (msg) => {
+    window._chatOnEvent = (msg) => {
       switch (msg.type) {
         case "round_start":
-          statusEl.textContent = `round ${msg.round} started`; setLive(true, "dialing");
+          statusEl.textContent = `round ${msg.round} started`;
           logLineInto(logEl, `→ round ${msg.round}: "${msg.message}"`, "sys");
-          transportBadge.textContent = "transport: —"; transportBadge.className = "transport-badge";
           break;
         case "initiator_dialing":
-          statusEl.textContent = "agent-bob is dialing through the real edge broker…";
-          diagram.send([0, 1], "accent", 1100);
-          logLineInto(logEl, `spawning agent-bob, broker ${msg.broker}`, "sys");
+          statusEl.textContent = "dialing through the real edge broker…";
+          logLineInto(logEl, `dialing, broker ${msg.broker}`, "sys");
           break;
-        case "initiator_log": logLineInto(logEl, "bob: " + msg.line); break;
+        case "initiator_log": {
+          const upgrade = directUpgradeFromLogLine(msg.line);
+          if (upgrade) { lastTransport = upgrade.cls; logLineInto(logEl, msg.line, upgrade.cls === "direct" ? "direct" : "sys"); }
+          else { logLineInto(logEl, msg.line); }
+          break;
+        }
         case "channel_connected":
           statusEl.textContent = "real broker/relay rendezvous — session opening";
-          diagram.send([1, 2], "accent2", 900);
-          logLineInto(logEl, "bob: " + msg.line, "sys");
+          logLineInto(logEl, msg.line, "sys");
           break;
         case "transport":
-          transportBadge.textContent = TRANSPORT_LABEL[msg.transport] || ("transport: " + msg.transport);
-          transportBadge.className = "transport-badge " + msg.transport;
-          logLineInto(logEl, "bob: " + msg.line, "sys");
+          lastTransport = msg.transport;
+          logLineInto(logEl, msg.line, "sys");
           break;
-        case "reply_received":
-          setLive(false, "call complete"); diagram.send([2, 0], "accent2", 900);
-          replyBox.className = "reply-box win"; replyBox.textContent = msg.reply;
-          logLineInto(logEl, "reply: " + msg.reply, "reply"); statusEl.textContent = "call complete";
+        case "reply_received": {
+          replyBox.className = "reply-box win";
+          replyBox.textContent = msg.reply;
+          logLineInto(logEl, "reply: " + msg.reply, "reply");
+          const via = lastTransport ? ` (${TRANSPORT_LABEL[lastTransport] || lastTransport})` : "";
+          statusEl.textContent = "call complete" + via;
           break;
+        }
         case "round_error":
-          setLive(false, "error"); replyBox.className = "reply-box";
+          replyBox.className = "reply-box";
           replyBox.innerHTML = '<div class="empty-hint">Error — see log below.</div>';
-          logLineInto(logEl, "ERROR: " + msg.message, "err"); statusEl.textContent = "error"; runBtn.disabled = false;
+          logLineInto(logEl, "ERROR: " + msg.message, "err");
+          statusEl.textContent = "error";
+          runBtn.disabled = false;
           break;
         case "round_done": statusEl.textContent = "round " + msg.round + " done"; runBtn.disabled = false; break;
       }
     };
+
+    window._populateChatOptions = populateOptions;
+    window._applyChatOnlineState = applyOnlineState;
   })();
 
-  // ---------- single shared SSE stream, routed by `scenario` ----------
+  // ---------- single shared SSE stream ----------
   const es = new EventSource("/events");
   es.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.type === "presence") {
-      // recomputed from a fresh /status fetch below is unnecessary -- the event itself
-      // is a single-peer delta, so ask the server for the current full snapshot instead
-      // of tracking two booleans in two places.
-      refreshStatus();
-      return;
-    }
-    if (msg.scenario === "bob1") { bob1Panel.onEvent(msg); return; }
-    if (msg.scenario === "bob2") { bob2Panel.onEvent(msg); return; }
-    if (msg.scenario === "bob" || msg.scenario === undefined) { window._baselineOnEvent(msg); }
+    if (msg.type === "presence") { refreshStatus(); return; }
+    window._chatOnEvent(msg);
   };
   es.onerror = () => {};
 
   function refreshStatus() {
-    fetch("/status").then((r) => r.json()).then((s) => applyPresence(!!s.bob1_online, !!s.bob2_online)).catch(() => {});
+    fetch("/status").then((r) => r.json()).then((s) => {
+      applyPresence(!!s.bob1_online, !!s.bob2_online);
+      window._applyChatOnlineState(!!s.bob1_online, !!s.bob2_online);
+    }).catch(() => {});
   }
   refreshStatus();
   setInterval(refreshStatus, 8000); // belt-and-braces alongside the SSE presence events
 
   fetch("/identities").then((r) => r.json()).then((ids) => {
-    document.getElementById("channel-id").textContent = "channel: " + ids.channel_id.slice(0, 16) + "…";
-    if (ids.bob1) document.getElementById("bob1-channel-id").textContent = "channel: " + ids.bob1.channel_id.slice(0, 16) + "…";
-    if (ids.bob2) document.getElementById("bob2-channel-id").textContent = "channel: " + ids.bob2.channel_id.slice(0, 16) + "…";
+    window._populateChatOptions(ids);
   }).catch(() => {});
 })();
 </script>
