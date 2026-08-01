@@ -70,7 +70,11 @@ services:
       # TCP-:443 handover rung for agent-bob's spawned initiator -- fetched once at
       # startup from A2A_AGENT_CP_URL's /pki/ca, see BobIdentity::from_env in src/main.rs.
       - A2A_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL, needed to fetch the Mesh-Plane CA root for the TCP front-door handover}
-      - A2A_CHANNEL_FRONT_DOOR=${A2A_CHANNEL_FRONT_DOOR:?edge front-door host:port, e.g. edge:443}
+      # #248: this bridge is a container on the plane's own compose network -- it needs
+      # the edge's REAL bound port (8443, not the host-level "443:8443" Docker
+      # port-publish, which only translates traffic entering from OUTSIDE Docker). See
+      # run-demo.sh's own comment on CONTAINER_FRONT_DOOR for the full story.
+      - A2A_CHANNEL_FRONT_DOOR=${A2A_CHANNEL_FRONT_DOOR:?edge front-door host:port -- e.g. edge:8443 when co-located on the plane's compose network, or <public-ip>:443 only for a genuinely external client}
       # bob-1/bob-2 real cross-network scenarios (#134-follow) -- all optional-by-design:
       # absent (default empty) means that scenario simply doesn't appear yet, not an
       # error (see PeerScenario::from_env / optional_env in src/main.rs). Provisioned

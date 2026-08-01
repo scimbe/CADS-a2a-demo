@@ -28,7 +28,22 @@ CONTAINER_EDGE="${CONTAINER_EDGE:-$EDGE}"
 # TCP-:443 handover rung (ct-agent's Ladder fallback: QUIC-relay -> TCP-over-front-door)
 # -- same container-vs-host distinction as CONTAINER_EDGE above. Default assumes the
 # plane's edge is reachable as "edge" on the compose network (true when co-located).
-CONTAINER_FRONT_DOOR="${CONTAINER_FRONT_DOOR:-${A2A_CHANNEL_FRONT_DOOR:-edge:443}}"
+#
+# #248 root-cause (2026-08-01): the edge's `:443` is a HOST-level Docker port-publish
+# ("443:8443" in compose.frontdoor.yml) that translates host:443 -> container:8443 for
+# traffic entering from OUTSIDE Docker. It does NOT create a listener reachable at
+# <edge-container-ip>:443 for another container on the SAME bridge network -- that
+# traffic never goes through the host's NAT table at all, so it hits a port nothing is
+# bound to. This bridge IS such a container, so its own use of this address (both the
+# TCP-443 handover rung above and CT_CHANNEL_RELAY_GATE, which reuses the same value --
+# see src/main.rs's run_round) needs the container's REAL bound port, 8443, not 443.
+# `edge:443` is only correct for a genuinely external client reaching the plane's real
+# public IP (where host-level NAT does apply) -- e.g. bob1/bob2's own machines, which
+# correctly use `<public-ip>:443` and are unaffected by this. Live-reproduced: every
+# relay-gate DCUtR dial from this bridge failed in ~150us with a flat OS-level
+# "Connection refused" -- confirmed directly with a raw TLS client on the same Docker
+# network (`:443` refused instantly, `:8443` completed a real TLS handshake).
+CONTAINER_FRONT_DOOR="${CONTAINER_FRONT_DOOR:-${A2A_CHANNEL_FRONT_DOOR:-edge:8443}}"
 TENANT="${TENANT:-a2a-demo}"
 EDGE_ADMIN_URL="${CT_CP_EDGE_ADMIN_URL:-}"
 EDGE_ADMIN_TOKEN="${CT_CP_EDGE_ADMIN_TOKEN:-}"
