@@ -509,6 +509,43 @@ async fn heartbeat_handler(State(st): State<Arc<BridgeState>>, Path(peer_name): 
     axum::http::StatusCode::NO_CONTENT.into_response()
 }
 
+/// #248: bob-1/bob-2 self-ship real log lines from their own `ct-agent channel --serve`
+/// process onto the dashboard's live event stream -- `heartbeat_handler` above only ever
+/// answers "are you still there", never "what are you actually seeing". Deliberately
+/// reuses the SAME per-peer heartbeat token (no new secret to generate/distribute) but
+/// as a header, not the body, since the body here is the log line itself, not a token.
+/// One line per request by design (matches `monitor.sh`'s stdin-line-at-a-time shipping)
+/// -- a peer under real load ships more requests, not bigger ones, keeping this endpoint's
+/// worst case bounded per-call regardless of how chatty the peer's own process gets.
+const MAX_MONITOR_LINE_BYTES: usize = 4096;
+
+async fn monitor_handler(
+    State(st): State<Arc<BridgeState>>,
+    Path(peer_name): Path<String>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> impl IntoResponse {
+    let Some(peer) = st.heartbeats.peer(&peer_name) else {
+        return (axum::http::StatusCode::NOT_FOUND, "unknown peer").into_response();
+    };
+    let token_ok = headers
+        .get("x-heartbeat-token")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|t| t == peer.token);
+    if !token_ok {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+    let line = body.trim();
+    if line.is_empty() {
+        return axum::http::StatusCode::BAD_REQUEST.into_response();
+    }
+    if line.len() > MAX_MONITOR_LINE_BYTES {
+        return axum::http::StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+    broadcast_event(&st.tx, json!({"type": "peer_log", "scenario": peer_name, "line": line})).await;
+    axum::http::StatusCode::NO_CONTENT.into_response()
+}
+
 /// Current online/offline snapshot for every peer -- the frontend calls this once on
 /// load (SSE only delivers events from the moment it connects onward, so a page opened
 /// between heartbeats needs an explicit current-state read, not just the stream).
@@ -609,6 +646,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/run", post(run_handler))
         .route("/run/:scenario", post(run_scenario_handler))
         .route("/heartbeat/:peer", post(heartbeat_handler))
+        .route("/monitor/:peer", post(monitor_handler))
         .route("/status", get(status_handler))
         .route("/identities", get(identities_handler))
         .with_state(state);

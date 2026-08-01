@@ -317,6 +317,13 @@
 
     window._chatOnEvent = (msg) => {
       switch (msg.type) {
+        case "peer_log":
+          // #248: bob-1/bob-2 self-shipping real lines from their own long-lived
+          // `ct-agent channel --serve` process (see monitor.sh) -- can arrive any time,
+          // not just mid-round, since their process runs independently of this
+          // dashboard's own triggered rounds.
+          logLineInto(logEl, `[${msg.scenario}] ${msg.line}`, "sys");
+          break;
         case "round_start":
           statusEl.textContent = `round ${msg.round} started`;
           logLineInto(logEl, `→ round ${msg.round}: "${msg.message}"`, "sys");
