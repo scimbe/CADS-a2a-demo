@@ -20,7 +20,14 @@ RUN apt-get update \
 # always succeeded. Bumped past 6894a8a to ct-agent's current main tip, which pins
 # CADS-Tunnel v0.4.9 (past the breaking change; no further attestation-format change
 # since). No newer ct-agent tag exists yet (still v0.3.0), so pin the exact commit.
-ARG CT_AGENT_REF=12219af4252285056f11c5abda7937332bcc6f72
+#
+# 2026-08-01 (#248 continued): bumped again to 883e20f -- fixes the *next* bug found
+# live once the attestation skew was fixed: the initiator (this bridge, co-located
+# with the edge on the same Docker host) offered its edge-observed RFC1918 Docker-
+# bridge address as a #104 direct-upgrade candidate to real external peers, who
+# correctly refused to dial it but left the initiator hanging the full session
+# timeout instead of degrading to relay promptly. See ct-agent's own commit message.
+ARG CT_AGENT_REF=883e20f779f5457a268c10b3750adfe820dec3a9
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

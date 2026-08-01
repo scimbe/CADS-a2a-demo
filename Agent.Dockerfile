@@ -8,8 +8,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 # #248 debug (2026-08-01): same bump as this repo's main Dockerfile -- see its comment
-# for why (attestation-format skew fixed in ct-agent's 6894a8a).
-ARG CT_AGENT_REF=12219af4252285056f11c5abda7937332bcc6f72
+# for why (attestation-format skew fixed in ct-agent's 6894a8a, then the RFC1918
+# direct-upgrade-candidate fix in 883e20f). This binary is browser-plane only and never
+# exercises the #104 channel-upgrade path, but is kept pinned in sync for consistency.
+ARG CT_AGENT_REF=883e20f779f5457a268c10b3750adfe820dec3a9
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

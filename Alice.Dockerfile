@@ -16,7 +16,11 @@ RUN apt-get update \
 # preimage format than whatever's verifying it, every scenario breaks, not just the
 # ones this bump was meant to fix. See the main Dockerfile's comment for the root cause
 # (ct-agent's 6894a8a, attestation-format skew).
-ARG CT_AGENT_REF=12219af4252285056f11c5abda7937332bcc6f72
+#
+# 2026-08-01 (#248 continued): bumped again to 883e20f alongside the main Dockerfile --
+# see its comment. Alice is also a #104 initiator (she offers a candidate back to
+# whichever bob dials her), so this fix applies to her role too, not just the bridge's.
+ARG CT_AGENT_REF=883e20f779f5457a268c10b3750adfe820dec3a9
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
