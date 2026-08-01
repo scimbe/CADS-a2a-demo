@@ -30,7 +30,9 @@ services:
       context: .
       dockerfile: Alice.Dockerfile
       args:
-        - CT_AGENT_REF=${CT_AGENT_REF:-1305b4eaf94bb36ad9a4c57d420135eb60e19bd0}
+        # #248 debug (2026-08-01): see Alice.Dockerfile's own comment -- must move together
+        # with the bridge's ct-agent pin.
+        - CT_AGENT_REF=${CT_AGENT_REF:-12219af4252285056f11c5abda7937332bcc6f72}
     environment:
       - CT_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port, e.g. edge:4435}
       - CT_CHANNEL_RELAY=${A2A_CHANNEL_RELAY:?edge relay host:port, e.g. edge:4436}
@@ -105,7 +107,8 @@ services:
       context: .
       dockerfile: Agent.Dockerfile
       args:
-        - CT_AGENT_REF=${CT_AGENT_REF:-1305b4eaf94bb36ad9a4c57d420135eb60e19bd0}
+        # #248 debug (2026-08-01): see Agent.Dockerfile's own comment.
+        - CT_AGENT_REF=${CT_AGENT_REF:-12219af4252285056f11c5abda7937332bcc6f72}
     environment:
       - CT_AGENT_MODE=browser
       - CT_AGENT_HOSTNAME=a2a-demo.bunsenbrenner.org

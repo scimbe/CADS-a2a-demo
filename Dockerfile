@@ -9,9 +9,18 @@ FROM rust:1-slim-bookworm AS ct-agent-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-# Same pin as this ecosystem's other Agent.Dockerfiles this session (CADS-auction-demo) --
-# past v0.3.0, no tag cut yet that includes the fixes landed since.
-ARG CT_AGENT_REF=1305b4eaf94bb36ad9a4c57d420135eb60e19bd0
+# #248 debug (2026-08-01): the previous pin (1305b4e, CADS-Tunnel v0.4.1) predates
+# ct-agent's own 6894a8a fix ("bump CADS-Tunnel pin from v0.4.1 to v0.4.8 -- breaking
+# attestation-format skew", #252's length-prefixed preimage domain). A real ct-agent
+# built from the old pin computes a DIFFERENT noise-attestation preimage than the live
+# control-plane (v0.4.9+) expects -- deterministic "peer Noise-key attestation failed"
+# against any peer whose attestation was registered under the new format, which is
+# exactly the symptom that made alice-bob1/alice-bob2 fail nearly every round while the
+# same-pin-built baseline "bob"/"alice" pair (self-consistently on the OLD format)
+# always succeeded. Bumped past 6894a8a to ct-agent's current main tip, which pins
+# CADS-Tunnel v0.4.9 (past the breaking change; no further attestation-format change
+# since). No newer ct-agent tag exists yet (still v0.3.0), so pin the exact commit.
+ARG CT_AGENT_REF=12219af4252285056f11c5abda7937332bcc6f72
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

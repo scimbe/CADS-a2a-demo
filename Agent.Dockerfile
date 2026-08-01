@@ -7,7 +7,9 @@ FROM rust:1-slim-bookworm AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-ARG CT_AGENT_REF=1305b4eaf94bb36ad9a4c57d420135eb60e19bd0
+# #248 debug (2026-08-01): same bump as this repo's main Dockerfile -- see its comment
+# for why (attestation-format skew fixed in ct-agent's 6894a8a).
+ARG CT_AGENT_REF=12219af4252285056f11c5abda7937332bcc6f72
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
