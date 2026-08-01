@@ -48,7 +48,14 @@ const MAX_MESSAGE_LEN: usize = 400;
 /// same-container baseline "bob" pairing comfortably fits in 25s (negligible network
 /// latency); a genuinely NAT'd/remote peer does not. Bumped to give real-world
 /// latency room without making a stuck admission hang indefinitely.
-const INITIATOR_TIMEOUT: Duration = Duration::from_secs(60);
+///
+/// 90s (found live, 2026-08-01, #248 continued): every scenario here (including the
+/// baseline "bob" pair -- run_round sets CT_CHANNEL_RELAY_GATE unconditionally, not
+/// just for bob1/bob2) now attempts the relay-gate DCUtR path, which ct-agent retries
+/// up to twice on a transient `#140` admission stall (ADMISSION_EXCHANGE_TIMEOUT=15s
+/// per attempt, ~45s worst case for admission alone). 60s left too little room for the
+/// rest of a round on top of that. This still fails loudly, just later.
+const INITIATOR_TIMEOUT: Duration = Duration::from_secs(90);
 
 fn ct_agent_bin() -> String {
     std::env::var("CT_AGENT_BIN").unwrap_or_else(|_| "ct-agent".to_string())
