@@ -304,6 +304,18 @@ async fn run_round(tx: broadcast::Sender<String>, round: u32, message: String, p
         // #104: opt in to the in-band relay->direct upgrade, mirrors alice's
         // CT_CHANNEL_DIRECT_UPGRADE=1 (Alice.Dockerfile). No new port either side.
         .env("CT_CHANNEL_DIRECT_UPGRADE", "1")
+        // #248 real hole-punch: the relay-gate leg is multiplexed on the SAME :443
+        // TLS listener as the front door above (different ALPN, `ct-edge-relay` vs
+        // whatever the front door uses) -- same address, same cert, no new port or
+        // trust anchor. This is the actual deployed NAT-to-NAT DCUtR path
+        // (channel_run.rs's `join_via_relay_gate_dcutr`, backed by the real
+        // Circuit-Relay v2 relay-node this stack already runs) -- distinct from, and
+        // more capable than, the CT_CHANNEL_DIRECT_UPGRADE candidate-exchange above,
+        // which only ever helps when at least one side already has a real dialable
+        // address. Both peers here are CT_CHANNEL_RELAY_ONLY=1, which is exactly the
+        // precondition this path requires.
+        .env("CT_CHANNEL_RELAY_GATE", params.front_door_addr)
+        .env("CT_CHANNEL_RELAY_GATE_CERT", params.front_door_cert_hex)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

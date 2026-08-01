@@ -25,38 +25,24 @@
 #     -e A2A_BOB_HOLDER_PUBKEY=... -e A2A_CHANNEL_ID=... \
 #     -e A2A_CHANNEL_BROKER=edge:4435 -e A2A_CHANNEL_RELAY=edge:4436 a2a-demo-bridge
 services:
-  a2a-demo-alice:
-    build:
-      context: .
-      dockerfile: Alice.Dockerfile
-      args:
-        # #248 debug (2026-08-01): see Alice.Dockerfile's own comment -- must move together
-        # with the bridge's ct-agent pin.
-        - CT_AGENT_REF=${CT_AGENT_REF:-883e20f779f5457a268c10b3750adfe820dec3a9}
-    environment:
-      - CT_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port, e.g. edge:4435}
-      - CT_CHANNEL_RELAY=${A2A_CHANNEL_RELAY:?edge relay host:port, e.g. edge:4436}
-      - CT_CHANNEL_HOLDER_KEY=${A2A_ALICE_HOLDER_KEY:?see provision.md}
-      - CT_CHANNEL_NOISE_KEY=${A2A_ALICE_NOISE_KEY:?see provision.md}
-      - CT_CHANNEL_GRANT=${A2A_ALICE_GRANT:?see provision.md}
-      # TCP-:443 handover rung: alice-entrypoint.sh fetches the real Mesh-Plane CA root from
-      # CT_AGENT_CP_URL's /pki/ca and derives CT_CHANNEL_FRONT_DOOR_CERT at startup -- both
-      # env vars below are what makes the Ladder fallback (QUIC-relay -> TCP front-door)
-      # active instead of the QUIC-only rung.
-      - CT_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL, needed to fetch the Mesh-Plane CA root for the TCP front-door handover}
-      - CT_CHANNEL_FRONT_DOOR=${A2A_CHANNEL_FRONT_DOOR:?edge front-door host:port, e.g. edge:443}
-      # #248 live debugging (2026-08-01, high prio -- bob2 organizing a real debug
-      # session with bob1): opt-in handshake-wait timing visibility
-      # (ct_common::a2a's debug_a2a_timing_enabled), already present in the pinned
-      # ct-agent build -- no code/rebuild needed, just this flag. Alice runs
-      # `ct-agent channel --serve` directly as this container's main process, so her
-      # `ct-a2a-timing: ...` lines land in `docker logs cads-a2a-demo-a2a-demo-alice-1`
-      # (not the bridge's SSE stream -- that only pipes the bridge's own SPAWNED
-      # initiator's stderr, see CT_DEBUG_A2A_TIMING on a2a-demo-bridge below for that
-      # half). Remove once bob1's #248 thread is closed -- this is diagnostic-only,
-      # not meant to stay on indefinitely.
-      - CT_DEBUG_A2A_TIMING=1
-    restart: unless-stopped
+  # a2a-demo-alice migrated OFF Docker, 2026-08-01: she used to run here, co-located with
+  # the edge on the same host/Docker network, which meant her edge-observed reflexive
+  # address could only ever be a private Docker IP -- the #104 direct-upgrade candidate
+  # exchange (CT_CHANNEL_DIRECT_UPGRADE=1) could never offer a real address for her side,
+  # no matter the config (see docs.bunsenbrenner.org/explanation/agent-fabric-channels/
+  # for why). She now runs as a host-native systemd --user service
+  # (~/.config/systemd/user/alice-a2a-demo.service on the plane host), with a real
+  # CT_CHANNEL_LISTEN/CT_CHANNEL_ADVERTISE bound to the host's actual public IP, so her
+  # reflexive address is genuinely global-unicast and the upgrade can actually succeed.
+  # Alice.Dockerfile/alice-entrypoint.sh/handler-alice.sh are unchanged and still exactly
+  # what the systemd service runs -- see /home/becke/alice-host/ on the plane host, a
+  # verbatim copy extracted from this same Dockerfile's built image, not a fork.
+  #
+  # Deliberately NOT deleted from this repo: Alice.Dockerfile/alice-entrypoint.sh/
+  # handler-alice.sh remain the source of truth for what the host-native service runs,
+  # and re-adding this service block (matching provision.md's identity/env var names) is
+  # the correct fallback if a future self-hoster wants Alice containerized again on a
+  # deployment where co-location genuinely isn't a concern.
 
   a2a-demo-bridge:
     build:
@@ -103,8 +89,10 @@ services:
     # host). The local-only smoke test in the header comment above still works via
     # `docker run -p 127.0.0.1:8790:8790 ...` against a one-off container, never a
     # host-wide port on the actual deployed service.
-    depends_on:
-      - a2a-demo-alice
+    # No depends_on: a2a-demo-alice anymore -- she's a host-native systemd service now
+    # (see the migration comment at the top of this file), not something Compose can
+    # express a dependency on. The bridge's own admission retry already tolerates her
+    # being briefly unavailable at boot, same as it always has for any other peer.
     restart: unless-stopped
 
   a2a-demo-origin:
