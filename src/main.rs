@@ -21,6 +21,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::io::Read;
 use std::process::Stdio;
@@ -226,6 +227,46 @@ impl HeartbeatState {
     }
 }
 
+/// Bounded per-peer log retention for the `/logs/:peer` self-service + core-operator
+/// endpoints below. In-memory ring buffer, not a file -- a peer's own `ct-agent
+/// channel --serve` process already owns its own durable log; what this bridge holds is
+/// only the lines it chose to ship via `monitor.sh`, and only the most recent
+/// `LOG_BUFFER_CAP_LINES` of them (each already capped at `MAX_MONITOR_LINE_BYTES` by
+/// `monitor_handler`). Worst case per peer: ~2MB, fixed regardless of how long the
+/// process runs or how chatty the peer gets -- the disk footprint is zero by
+/// construction (nothing here ever touches disk), and the memory footprint cannot grow
+/// past the cap. Lost on bridge restart; that tradeoff is deliberate, not an oversight --
+/// a size-capped rotating file would survive restarts but adds real disk-management
+/// surface this demo doesn't need yet.
+const LOG_BUFFER_CAP_LINES: usize = 500;
+
+struct LogStore {
+    lines: Mutex<HashMap<String, VecDeque<String>>>,
+}
+
+impl LogStore {
+    fn new() -> Self {
+        Self { lines: Mutex::new(HashMap::new()) }
+    }
+
+    async fn push(&self, peer: &str, line: &str) {
+        let mut lines = self.lines.lock().await;
+        let buf = lines.entry(peer.to_string()).or_default();
+        buf.push_back(line.to_string());
+        while buf.len() > LOG_BUFFER_CAP_LINES {
+            buf.pop_front();
+        }
+    }
+
+    async fn get(&self, peer: &str) -> Vec<String> {
+        self.lines.lock().await.get(peer).map(|b| b.iter().cloned().collect()).unwrap_or_default()
+    }
+
+    async fn get_all(&self) -> HashMap<String, Vec<String>> {
+        self.lines.lock().await.iter().map(|(k, v)| (k.clone(), v.iter().cloned().collect())).collect()
+    }
+}
+
 struct BridgeState {
     bob: BobIdentity,
     plane: PlaneConfig,
@@ -235,6 +276,13 @@ struct BridgeState {
     round: AtomicU32,
     busy: Arc<Mutex<()>>,
     tx: broadcast::Sender<String>,
+    logs: LogStore,
+    /// Operator/"core" secret: presenting this via `x-core-log-token` on `/logs` grants
+    /// read access to every peer's buffered log, not just one's own. Unset by default
+    /// (`None`) -- the endpoint that depends on it is simply unavailable until an
+    /// operator explicitly configures `A2A_CORE_LOG_TOKEN`, matching this file's existing
+    /// pattern for `HeartbeatPeer` tokens (`optional_env`, no default secret ever baked in).
+    core_log_token: Option<String>,
 }
 
 async fn broadcast_event(tx: &broadcast::Sender<String>, ev: Value) {
@@ -542,8 +590,40 @@ async fn monitor_handler(
     if line.len() > MAX_MONITOR_LINE_BYTES {
         return axum::http::StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }
+    st.logs.push(&peer_name, line).await;
     broadcast_event(&st.tx, json!({"type": "peer_log", "scenario": peer_name, "line": line})).await;
     axum::http::StatusCode::NO_CONTENT.into_response()
+}
+
+/// Read-back for the bounded log buffer `monitor_handler` fills. Two access levels,
+/// both header-based (matches `monitor_handler`'s own convention, no query-string
+/// secrets in server access logs):
+///   - `x-heartbeat-token: <peer's own token>` -- that peer's own buffered lines only.
+///     Same shared secret bob-1/bob-2 already hold from #248, no new credential to
+///     distribute for self-service access.
+///   - `x-core-log-token: <A2A_CORE_LOG_TOKEN>` -- every peer's buffered lines, keyed by
+///     name. Operator-only; unavailable (404) unless that env var is actually set.
+/// A caller presenting neither, or a `:peer` path with a mismatched token, sees exactly
+/// what an unauthenticated caller would (401/404) -- no distinction that would leak
+/// whether a given peer name is valid.
+async fn logs_handler(State(st): State<Arc<BridgeState>>, Path(peer_name): Path<String>, headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if let Some(core_token) = st.core_log_token.as_deref() {
+        let core_ok = headers.get("x-core-log-token").and_then(|v| v.to_str().ok()).is_some_and(|t| t == core_token);
+        if core_ok {
+            if peer_name == "all" {
+                return Json(json!(st.logs.get_all().await)).into_response();
+            }
+            return Json(json!({"peer": peer_name, "lines": st.logs.get(&peer_name).await})).into_response();
+        }
+    }
+    let Some(peer) = st.heartbeats.peer(&peer_name) else {
+        return (axum::http::StatusCode::NOT_FOUND, "unknown peer").into_response();
+    };
+    let token_ok = headers.get("x-heartbeat-token").and_then(|v| v.to_str().ok()).is_some_and(|t| t == peer.token);
+    if !token_ok {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+    Json(json!({"peer": peer_name, "lines": st.logs.get(&peer_name).await})).into_response()
 }
 
 /// Current online/offline snapshot for every peer -- the frontend calls this once on
@@ -612,6 +692,7 @@ fn build_state() -> Result<Arc<BridgeState>, String> {
     let bob2 = PeerScenario::from_env("bob-2 (remote, public-IP)", "A2A_S_ALICE_BOB2_CHANNEL_ID", "A2A_S_ALICE_BOB2_ALICE_GRANT", "A2A_S_BOB2_HOLDER_PUBKEY");
     let heartbeats = HeartbeatState::from_env();
     let (tx, _rx) = broadcast::channel::<String>(128);
+    let core_log_token = optional_env("A2A_CORE_LOG_TOKEN");
     Ok(Arc::new(BridgeState {
         bob,
         plane,
@@ -621,6 +702,8 @@ fn build_state() -> Result<Arc<BridgeState>, String> {
         round: AtomicU32::new(0),
         busy: Arc::new(Mutex::new(())),
         tx,
+        logs: LogStore::new(),
+        core_log_token,
     }))
 }
 
@@ -647,6 +730,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/run/:scenario", post(run_scenario_handler))
         .route("/heartbeat/:peer", post(heartbeat_handler))
         .route("/monitor/:peer", post(monitor_handler))
+        .route("/logs/:peer", get(logs_handler))
         .route("/status", get(status_handler))
         .route("/identities", get(identities_handler))
         .with_state(state);
