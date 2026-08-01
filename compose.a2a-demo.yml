@@ -133,7 +133,7 @@ services:
       dockerfile: Agent.Dockerfile
       args:
         # #248 debug (2026-08-01): see Agent.Dockerfile's own comment.
-        - CT_AGENT_REF=${CT_AGENT_REF:-883e20f779f5457a268c10b3750adfe820dec3a9}
+        - CT_AGENT_REF=${CT_AGENT_REF:-fda4f4d}
     environment:
       - CT_AGENT_MODE=browser
       - CT_AGENT_HOSTNAME=a2a-demo.bunsenbrenner.org

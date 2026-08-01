@@ -27,7 +27,13 @@ RUN apt-get update \
 # bridge address as a #104 direct-upgrade candidate to real external peers, who
 # correctly refused to dial it but left the initiator hanging the full session
 # timeout instead of degrading to relay promptly. See ct-agent's own commit message.
-ARG CT_AGENT_REF=883e20f779f5457a268c10b3750adfe820dec3a9
+#
+# 2026-08-01 (#248 continued again): bumped to fda4f4d -- adds the always-on
+# uptime/bytes-sent/bytes-recvd status line (unconditional, no flag) and extends
+# CT_DEBUG_A2A_TIMING with dial/accept/handshake-duration timing. Must move together
+# with Alice.Dockerfile's pin (below) -- she's the responder every scenario dials, so a
+# pin skew here means only one side of a session logs the new detail.
+ARG CT_AGENT_REF=fda4f4d
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

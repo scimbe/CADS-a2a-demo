@@ -20,7 +20,13 @@ RUN apt-get update \
 # 2026-08-01 (#248 continued): bumped again to 883e20f alongside the main Dockerfile --
 # see its comment. Alice is also a #104 initiator (she offers a candidate back to
 # whichever bob dials her), so this fix applies to her role too, not just the bridge's.
-ARG CT_AGENT_REF=883e20f779f5457a268c10b3750adfe820dec3a9
+#
+# 2026-08-01 (#248 continued again): bumped to fda4f4d alongside the main Dockerfile --
+# same always-on stats + extended CT_DEBUG_A2A_TIMING. Alice now runs host-native
+# (systemd, see compose.a2a-demo.yml's migration comment), not from this image directly
+# -- this pin documents what /home/becke/alice-host/ct-agent on the plane host should
+# match, extracted the same way (docker build + docker cp) rather than run in place.
+ARG CT_AGENT_REF=fda4f4d
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
