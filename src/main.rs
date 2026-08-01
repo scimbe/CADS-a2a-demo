@@ -39,7 +39,15 @@ const MAX_MESSAGE_LEN: usize = 400;
 /// generous (broker rendezvous + a real Noise handshake through the edge relay takes
 /// longer than the direct-address path this demo used before), but bounded so a
 /// genuinely stuck admission fails loudly instead of hanging the dashboard forever.
-const INITIATOR_TIMEOUT: Duration = Duration::from_secs(25);
+///
+/// 25s (found live, 2026-08-01): too tight for the real cross-NAT scenarios
+/// (alice-bob1/alice-bob2) -- this budget covers process spawn, broker admission,
+/// relay setup, the #104 in-band direct-upgrade probe, AND the actual service-call
+/// round-trip to a real remote participant's machine, all in sequence. The
+/// same-container baseline "bob" pairing comfortably fits in 25s (negligible network
+/// latency); a genuinely NAT'd/remote peer does not. Bumped to give real-world
+/// latency room without making a stuck admission hang indefinitely.
+const INITIATOR_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn ct_agent_bin() -> String {
     std::env::var("CT_AGENT_BIN").unwrap_or_else(|_| "ct-agent".to_string())
