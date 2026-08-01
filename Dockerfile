@@ -33,7 +33,7 @@ RUN apt-get update \
 # CT_DEBUG_A2A_TIMING with dial/accept/handshake-duration timing. Must move together
 # with Alice.Dockerfile's pin (below) -- she's the responder every scenario dials, so a
 # pin skew here means only one side of a session logs the new detail.
-ARG CT_AGENT_REF=fb5a799
+ARG CT_AGENT_REF=6af1b10
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

@@ -26,7 +26,7 @@ RUN apt-get update \
 # (systemd, see compose.a2a-demo.yml's migration comment), not from this image directly
 # -- this pin documents what /home/becke/alice-host/ct-agent on the plane host should
 # match, extracted the same way (docker build + docker cp) rather than run in place.
-ARG CT_AGENT_REF=fb5a799
+ARG CT_AGENT_REF=6af1b10
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
