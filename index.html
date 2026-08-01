@@ -118,6 +118,7 @@
    <div class="diagram-head">
     <span>alice &middot; bob-1 (NAT'd) &middot; bob-2 (public-IP)</span>
     <span style="display:flex;gap:.5rem">
+     <span class="presence-pill online" id="pill-alice" title="This bridge's own process -- always up while the demo is deployed, no heartbeat needed."><i></i>alice</span>
      <span class="presence-pill" id="pill-bob1"><i></i>bob-1</span>
      <span class="presence-pill" id="pill-bob2"><i></i>bob-2</span>
     </span>
@@ -256,13 +257,29 @@
     topoNodes[1].online = bob1On; topoNodes[2].online = bob2On;
     topoNodes.edges[0].live = bob1On;
     topoNodes.edges[1].live = bob2On;
-    topoNodes.edges[2].live = bob1On && bob2On;
+    // #248: this used to be `bob1On && bob2On` -- both peers merely being independently
+    // online at the same time, with zero actual bob-1<->bob-2 traffic ever having
+    // happened, isn't "live". No channel between them exists yet; this edge stays
+    // dashed until a real bob-1<->bob-2 round has actually completed (see
+    // markBob1Bob2Live, called only from a real reply_received for that pairing).
     document.getElementById("pill-bob1").classList.toggle("online", bob1On);
     document.getElementById("pill-bob2").classList.toggle("online", bob2On);
   }
+  // Set only by a genuinely observed bob-1<->bob-2 exchange completing -- see the
+  // "reply_received" handler below. Never inferred from presence alone.
+  function markBob1Bob2Live() { topoNodes.edges[2].live = true; }
 
-  // ---------- one chat, participant picker chooses who alice dials ----------
-  const PARTICIPANTS = { bob: "bob (always on)", bob1: "bob-1 (behind a NAT)", bob2: "bob-2 (public IP)" };
+  // ---------- one chat, participant picker chooses which real pairing to trigger ----------
+  // #248: labels used to just name the OTHER party ("bob-1 (behind a NAT)"), with no
+  // hint of which direction the call actually goes -- confusing, since it flips between
+  // options: the "bob" baseline spawns an ephemeral BOB that calls the persistent ALICE
+  // daemon, while "bob1"/"bob2" spawn an ephemeral ALICE that calls the persistent
+  // bob-1/bob-2 processes. Every option is now explicit about who dials whom.
+  const PARTICIPANTS = {
+    bob: "bob → alice (baseline, always on)",
+    bob1: "alice → bob-1 (behind a NAT)",
+    bob2: "alice → bob-2 (public IP)",
+  };
 
   (function chat() {
     const statusEl = document.getElementById("status");
