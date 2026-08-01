@@ -330,6 +330,20 @@ struct DialParams<'a> {
     grant_hex: &'a str,
     front_door_addr: &'a str,
     front_door_cert_hex: &'a str,
+    // #248 root-cause (2026-08-01): CT_CHANNEL_RELAY_ONLY/RELAY_GATE below only make
+    // sense when the RESPONDER on the other end is *also* configured for the relay-gate
+    // DCUtR Accept path. For bob1/bob2 that's true -- their own external --serve
+    // processes were set up to match, live-reproduced getting past admission to a real
+    // hole-punch attempt (#248 GitHub thread). For the baseline "bob" scenario the
+    // responder is the host-native Alice daemon (real public IP, CT_CHANNEL_DIRECT_UPGRADE=1,
+    // relay_only=false by design for the #104 direct-dial experiment) -- she never runs
+    // the matching Accept-side code at all. Live-reproduced: every baseline round failed
+    // with a downstream "early eof" once relay-gate was unconditionally wired into this
+    // function (4ca276c's message said "for bob1/bob2 rounds" but the code change was
+    // to this shared function, silently affecting "bob" too). This flag restores the
+    // baseline scenario to the plain plane-brokered + #104 path that actually matches
+    // what Alice runs, instead of a mismatched protocol neither side can complete.
+    use_relay_gate: bool,
 }
 
 async fn run_round(tx: broadcast::Sender<String>, round: u32, message: String, params: DialParams<'_>) {
@@ -342,12 +356,11 @@ async fn run_round(tx: broadcast::Sender<String>, round: u32, message: String, p
     // edge). `CT_CHANNEL_CALL_SERVICE` + stdin is exactly the pattern
     // docs.bunsenbrenner.org's serve-a-channel-service.md step 4 walks through by hand.
     broadcast_event(&tx, json!({"type": "initiator_dialing", "scenario": scenario, "broker": params.broker_addr})).await;
-    let mut initiator = match Command::new(ct_agent_bin())
-        .arg("channel")
+    let mut cmd = Command::new(ct_agent_bin());
+    cmd.arg("channel")
         .env("CT_CHANNEL_ROLE", "initiate")
         .env("CT_CHANNEL_BROKER", params.broker_addr)
         .env("CT_CHANNEL_RELAY", params.relay_addr)
-        .env("CT_CHANNEL_RELAY_ONLY", "1")
         .env("CT_CHANNEL_HOLDER_KEY", params.holder_key_hex)
         .env("CT_CHANNEL_NOISE_KEY", params.noise_key_hex)
         .env("CT_CHANNEL_GRANT", params.grant_hex)
@@ -358,7 +371,8 @@ async fn run_round(tx: broadcast::Sender<String>, round: u32, message: String, p
         .env("CT_CHANNEL_FRONT_DOOR_CERT", params.front_door_cert_hex)
         // #104: opt in to the in-band relay->direct upgrade, mirrors alice's
         // CT_CHANNEL_DIRECT_UPGRADE=1 (Alice.Dockerfile). No new port either side.
-        .env("CT_CHANNEL_DIRECT_UPGRADE", "1")
+        .env("CT_CHANNEL_DIRECT_UPGRADE", "1");
+    if params.use_relay_gate {
         // #248 real hole-punch: the relay-gate leg is multiplexed on the SAME :443
         // TLS listener as the front door above (different ALPN, `ct-edge-relay` vs
         // whatever the front door uses) -- same address, same cert, no new port or
@@ -367,10 +381,16 @@ async fn run_round(tx: broadcast::Sender<String>, round: u32, message: String, p
         // Circuit-Relay v2 relay-node this stack already runs) -- distinct from, and
         // more capable than, the CT_CHANNEL_DIRECT_UPGRADE candidate-exchange above,
         // which only ever helps when at least one side already has a real dialable
-        // address. Both peers here are CT_CHANNEL_RELAY_ONLY=1, which is exactly the
-        // precondition this path requires.
-        .env("CT_CHANNEL_RELAY_GATE", params.front_door_addr)
-        .env("CT_CHANNEL_RELAY_GATE_CERT", params.front_door_cert_hex)
+        // address. Only set when the RESPONDER is also configured for it (bob1/bob2's
+        // own --serve processes) -- see DialParams::use_relay_gate's comment for why
+        // this must NOT be unconditional (root-caused live, 2026-08-01: it broke the
+        // baseline "bob" scenario, whose responder -- host-native Alice -- runs the
+        // #104 direct-dial path instead and never speaks this protocol).
+        cmd.env("CT_CHANNEL_RELAY_ONLY", "1")
+            .env("CT_CHANNEL_RELAY_GATE", params.front_door_addr)
+            .env("CT_CHANNEL_RELAY_GATE_CERT", params.front_door_cert_hex);
+    }
+    let mut initiator = match cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -488,6 +508,9 @@ async fn run_handler(State(st): State<Arc<BridgeState>>, Json(req): Json<RunReq>
             grant_hex: &grant,
             front_door_addr: &fd,
             front_door_cert_hex: &fd_cert,
+            // The responder here is the host-native Alice daemon, not relay-gate capable
+            // -- see DialParams::use_relay_gate's comment.
+            use_relay_gate: false,
         };
         run_round(tx, round, message, params).await;
         drop(guard);
@@ -539,6 +562,9 @@ async fn run_scenario_handler(State(st): State<Arc<BridgeState>>, Path(scenario)
             grant_hex: &grant,
             front_door_addr: &fd,
             front_door_cert_hex: &fd_cert,
+            // bob1/bob2's own --serve processes are configured to match relay-gate DCUtR
+            // -- see DialParams::use_relay_gate's comment.
+            use_relay_gate: true,
         };
         run_round(tx, round, message, params).await;
         drop(guard);
