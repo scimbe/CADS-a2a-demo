@@ -371,7 +371,14 @@ async fn run_round(tx: broadcast::Sender<String>, round: u32, message: String, p
         .env("CT_CHANNEL_FRONT_DOOR_CERT", params.front_door_cert_hex)
         // #104: opt in to the in-band relay->direct upgrade, mirrors alice's
         // CT_CHANNEL_DIRECT_UPGRADE=1 (Alice.Dockerfile). No new port either side.
-        .env("CT_CHANNEL_DIRECT_UPGRADE", "1");
+        .env("CT_CHANNEL_DIRECT_UPGRADE", "1")
+        // This spawned initiator is a fresh, ephemeral, container-bound process with no
+        // listen/advertise address of its own regardless of scenario -- always relay-only
+        // from ITS side. Independent of whether it also attempts relay-gate DCUtR below
+        // (that's about which protocol the RESPONDER speaks, not whether this side has an
+        // address); without this, ct-agent refuses to start at all ("CT_CHANNEL_LISTEN
+        // required ... or set CT_CHANNEL_RELAY_ONLY=1").
+        .env("CT_CHANNEL_RELAY_ONLY", "1");
     if params.use_relay_gate {
         // #248 real hole-punch: the relay-gate leg is multiplexed on the SAME :443
         // TLS listener as the front door above (different ALPN, `ct-edge-relay` vs
@@ -386,8 +393,7 @@ async fn run_round(tx: broadcast::Sender<String>, round: u32, message: String, p
         // this must NOT be unconditional (root-caused live, 2026-08-01: it broke the
         // baseline "bob" scenario, whose responder -- host-native Alice -- runs the
         // #104 direct-dial path instead and never speaks this protocol).
-        cmd.env("CT_CHANNEL_RELAY_ONLY", "1")
-            .env("CT_CHANNEL_RELAY_GATE", params.front_door_addr)
+        cmd.env("CT_CHANNEL_RELAY_GATE", params.front_door_addr)
             .env("CT_CHANNEL_RELAY_GATE_CERT", params.front_door_cert_hex);
     }
     let mut initiator = match cmd
