@@ -11,7 +11,7 @@ RUN apt-get update \
 # for why (attestation-format skew fixed in ct-agent's 6894a8a, then the RFC1918
 # direct-upgrade-candidate fix in 883e20f). This binary is browser-plane only and never
 # exercises the #104 channel-upgrade path, but is kept pinned in sync for consistency.
-ARG CT_AGENT_REF=1915431
+ARG CT_AGENT_REF=9d776c5
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
