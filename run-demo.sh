@@ -75,16 +75,25 @@ RESOLVED="$(getent hosts "$HOSTNAME_FQDN" 2>/dev/null | awk '{print $1; exit}')"
 [ -n "$RESOLVED" ] && echo "   $HOSTNAME_FQDN -> $RESOLVED" \
   || echo "   ! $HOSTNAME_FQDN does not resolve yet (deSEC NS may still be propagating)."
 
-say "Minting a join token at $CP_URL/enroll/issue"
-if [ -n "$EDGE_ADMIN_TOKEN" ]; then
-  TOKEN="$(curl -fsS -X POST "$CP_URL/enroll/issue" -H 'content-type: application/json' \
-            -H "x-ct-admin-token: $EDGE_ADMIN_TOKEN" -d "{\"tenant\":\"$TENANT\"}" \
-            | sed -n 's/.*"token":"\([0-9a-f]\{64\}\)".*/\1/p')"
+# A caller without the admin token (e.g. a routine-lifecycle maintainer handed
+# a batch of pre-minted single-use tokens instead of the admin token itself,
+# #214) can skip minting entirely by pre-setting A2A_JOIN_TOKEN -- consumes one
+# of the batch instead of calling the admin-gated /enroll/issue.
+if [ -n "${A2A_JOIN_TOKEN:-}" ]; then
+  say "Using pre-minted A2A_JOIN_TOKEN (skipping /enroll/issue -- no admin token needed)"
+  TOKEN="$A2A_JOIN_TOKEN"
 else
-  TOKEN="$(curl -fsS -X POST "$CP_URL/enroll/issue" -H 'content-type: application/json' \
-            -d "{\"tenant\":\"$TENANT\"}" | sed -n 's/.*"token":"\([0-9a-f]\{64\}\)".*/\1/p')"
+  say "Minting a join token at $CP_URL/enroll/issue"
+  if [ -n "$EDGE_ADMIN_TOKEN" ]; then
+    TOKEN="$(curl -fsS -X POST "$CP_URL/enroll/issue" -H 'content-type: application/json' \
+              -H "x-ct-admin-token: $EDGE_ADMIN_TOKEN" -d "{\"tenant\":\"$TENANT\"}" \
+              | sed -n 's/.*"token":"\([0-9a-f]\{64\}\)".*/\1/p')"
+  else
+    TOKEN="$(curl -fsS -X POST "$CP_URL/enroll/issue" -H 'content-type: application/json' \
+              -d "{\"tenant\":\"$TENANT\"}" | sed -n 's/.*"token":"\([0-9a-f]\{64\}\)".*/\1/p')"
+  fi
+  [ -n "$TOKEN" ] || die "could not mint a join token (if the CP gates /enroll/issue, set CT_CP_EDGE_ADMIN_TOKEN in $ENV_FILE, or set A2A_JOIN_TOKEN to a pre-minted one)"
 fi
-[ -n "$TOKEN" ] || die "could not mint a join token (if the CP gates /enroll/issue, set CT_CP_EDGE_ADMIN_TOKEN in $ENV_FILE)"
 echo "   token minted (single-use; not printed)"
 
 A2A_AGENT_TOKEN=""
