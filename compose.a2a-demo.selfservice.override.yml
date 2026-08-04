@@ -1,0 +1,60 @@
+# Self-service overlay for the Gelb (shared-cert) phase, mirroring
+# CADS-webconference-demo's own selfservice pattern:
+#   - origin serves plain HTTP on :80 (Caddyfile.selfservice) instead of
+#     terminating its own TLS -- no A2A_CERT_DIR needed while Gelb is active.
+#   - adds agent-alice back as a container (compose.a2a-demo.yml's own base
+#     file deliberately dropped her in favor of a host-native systemd service
+#     on core's plane host, which this deployment has no access to -- see
+#     that file's migration comment). Alice.Dockerfile/alice-entrypoint.sh/
+#     handler-alice.sh were kept in the repo as the source of truth for
+#     exactly this fallback. Known limitation, documented in
+#     docs/PLAYBOOK.md: her edge-observed reflexive address is a private
+#     Docker IP here, so the #104 direct-upgrade candidate exchange can't
+#     offer a real address for her side -- sessions stay on the relay path,
+#     which is fully functional, just not showcasing that specific
+#     optimization.
+#
+#   docker compose -f compose.a2a-demo.yml -f compose.a2a-demo.selfservice.override.yml \
+#     --env-file .env.selfservice up --build -d
+services:
+  a2a-demo-origin:
+    volumes:
+      - ./Caddyfile.selfservice:/etc/caddy/Caddyfile:ro
+      - a2a_demo_caddy_data:/data
+    expose:
+      - "80"
+
+  a2a-demo-agent:
+    environment:
+      # Base compose.a2a-demo.yml points at :443, matching the Grün flow where the
+      # origin terminates its own TLS. Caddyfile.selfservice above serves plain HTTP
+      # on :80 instead (the agent terminates TLS itself in Gelb, via
+      # CT_AGENT_EDGE_CERT_URL) -- forwarding to :443 there dials a port nothing is
+      # bound to, so the tunnel completes its own TLS handshake but the origin dial
+      # itself then fails, closing every request with an empty reply.
+      - CT_AGENT_ORIGIN=a2a-demo-origin:80
+
+  a2a-demo-alice:
+    build:
+      context: .
+      dockerfile: Alice.Dockerfile
+      args:
+        - CT_AGENT_REF=${CT_AGENT_REF:-a1d4287}
+    environment:
+      - CT_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL}
+      - CT_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port}
+      - CT_CHANNEL_RELAY=${A2A_CHANNEL_RELAY:?edge relay host:port}
+      - CT_CHANNEL_HOLDER_KEY=${A2A_ALICE_HOLDER_KEY:?see provision.sh output}
+      - CT_CHANNEL_NOISE_KEY=${A2A_ALICE_NOISE_KEY:?see provision.sh output}
+      - CT_CHANNEL_GRANT=${A2A_ALICE_GRANT:?see provision.sh output}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    name: ${PLANE_NETWORK:-a2a-demo-selfservice_default}
+    external: false
