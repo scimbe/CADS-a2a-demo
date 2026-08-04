@@ -5,11 +5,26 @@
 #
 # The cert is issued CORE-side (CADS-Tunnel's scripts/authorize-pipeline.sh, deSEC
 # DNS-01) and mounted in as static files -- never an ACME client or DNS credential here.
+#
+# 2026-08-04: this tunnel dropped back to Gelb (a control-plane restart resets
+# the admission-broker's Rot/Gelb/Gruen tracking) -- while Gelb, the edge
+# terminates the customer-facing TLS itself with its shared wildcard cert and
+# forwards PLAINTEXT to the origin, regardless of whether a valid core-issued
+# cert already sits in /certs (Gruen is about the tunnel's admission state,
+# not about a cert file merely existing). The old `tls ...` directive made
+# Caddy reject that forwarded plaintext ("Client sent an HTTP request to an
+# HTTPS server"), confirmed live via curl -v. Same fix already applied to
+# webconference-demo's Caddyfile for the identical symptom: auto_https off +
+# plain HTTP on :443 while Gelb. Switch back to
+# `tls /certs/fullchain.pem /certs/privkey.pem` once this tunnel reaches
+# Gruen again (ct-agent certificate).
+{
+	auto_https off
+}
 
-a2a-demo.bunsenbrenner.org {
+:443 {
 	reverse_proxy a2a-demo-bridge:8790
 	encode gzip
-	tls /certs/fullchain.pem /certs/privkey.pem
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
