@@ -33,11 +33,18 @@ RUN apt-get update \
 # CT_DEBUG_A2A_TIMING with dial/accept/handshake-duration timing. Must move together
 # with Alice.Dockerfile's pin (below) -- she's the responder every scenario dials, so a
 # pin skew here means only one side of a session logs the new detail.
-ARG CT_AGENT_REF=72394eb
+#
+# Bumped 2026-08-13 to v0.4.8 (3823343f, ADMISSION_EXCHANGE_TIMEOUT 15s -> 45s -- the
+# actual root cause of CADS-Tunnel#494, pinned by the operator via live edge logs).
+# Confirmed a strict descendant of 72394eb/6894a8a/883e20f/fda4f4d before bumping
+# (git merge-base --is-ancestor checked against all four) -- every #248 fix above
+# stays included. Keep in sync with Agent.Dockerfile/Alice.Dockerfile's own
+# CT_AGENT_REF.
+ARG CT_AGENT_REF=3823343fdc47ea4ed91819cb68bfa8e89399f3f8
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/target \
+RUN --mount=type=cache,id=cargo-registry-a2a-bridge-ctagent,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-target-a2a-bridge-ctagent,target=/build/target \
     cargo build --release --locked --jobs 1 \
     && cp target/release/ct-agent /tmp/ct-agent
 
@@ -52,8 +59,8 @@ COPY --from=ct-agent-builder /tmp/ct-agent /tmp/.ct-agent-builder-done
 COPY Cargo.toml Cargo.lock* ./
 COPY src src
 COPY index.html index.html
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/work/target \
+RUN --mount=type=cache,id=cargo-registry-a2a-bridge-own,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-target-a2a-bridge-own,target=/work/target \
     cargo build --release --jobs 1 \
     && cp target/release/a2a-demo-bridge /tmp/a2a-demo-bridge
 

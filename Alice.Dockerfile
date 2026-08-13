@@ -26,11 +26,17 @@ RUN apt-get update \
 # (systemd, see compose.a2a-demo.yml's migration comment), not from this image directly
 # -- this pin documents what /home/becke/alice-host/ct-agent on the plane host should
 # match, extracted the same way (docker build + docker cp) rather than run in place.
-ARG CT_AGENT_REF=72394eb
+#
+# Bumped 2026-08-13 to v0.4.8 (3823343f, ADMISSION_EXCHANGE_TIMEOUT 15s -> 45s) --
+# confirmed a strict descendant of this pin's whole #248 fix chain (72394eb/6894a8a/
+# 883e20f/fda4f4d all verified ancestors). Must move together with Agent.Dockerfile/
+# Dockerfile's own CT_AGENT_REF (same reasoning as every earlier #248 bump above) --
+# remember to also re-extract this into /home/becke/alice-host/ on the plane host.
+ARG CT_AGENT_REF=3823343fdc47ea4ed91819cb68bfa8e89399f3f8
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/target \
+RUN --mount=type=cache,id=cargo-registry-a2a-alice,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-target-a2a-alice,target=/build/target \
     cargo build --release --locked --jobs 1 \
     && cp target/release/ct-agent /tmp/ct-agent
 
