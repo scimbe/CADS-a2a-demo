@@ -137,10 +137,11 @@ services:
       dockerfile: Agent.Dockerfile
       args:
         # #248 debug (2026-08-01): see Agent.Dockerfile's own comment. Bumped
-        # 2026-08-13 to v0.4.8 (3823343f, ADMISSION_EXCHANGE_TIMEOUT 15s -> 45s).
-        - CT_AGENT_REF=${CT_AGENT_REF:-3823343fdc47ea4ed91819cb68bfa8e89399f3f8}
+        # 2026-08-15 to v0.5.1 (framed 'F' fallback, CADS-Tunnel#528).
+        - CT_AGENT_REF=${CT_AGENT_REF:-v0.5.1}
     environment:
       - CT_AGENT_MODE=browser
+      - CT_AGENT_FRAMED_FALLBACK=1  # CADS-Tunnel#528
       - CT_AGENT_HOSTNAME=a2a-demo.bunsenbrenner.org
       - CT_AGENT_TOKEN=${A2A_AGENT_TOKEN:-}
       - CT_AGENT_ORIGIN=a2a-demo-origin:443
