@@ -137,8 +137,8 @@ services:
       dockerfile: Agent.Dockerfile
       args:
         # #248 debug (2026-08-01): see Agent.Dockerfile's own comment. Bumped
-        # 2026-08-15 to v0.5.1 (framed 'F' fallback, CADS-Tunnel#528).
-        - CT_AGENT_REF=${CT_AGENT_REF:-v0.5.1}
+        # 2026-08-15 to v0.5.2 (framed 'F' fallback, CADS-Tunnel#528).
+        - CT_AGENT_REF=${CT_AGENT_REF:-v0.5.2}
     environment:
       - CT_AGENT_MODE=browser
       - CT_AGENT_FRAMED_FALLBACK=1  # CADS-Tunnel#528
