@@ -12,14 +12,19 @@ RUN apt-get update \
 # direct-upgrade-candidate fix in 883e20f). This binary is browser-plane only and never
 # exercises the #104 channel-upgrade path, but is kept pinned in sync for consistency.
 #
-# Bumped 2026-08-13 to v0.4.8 (3823343f, ADMISSION_EXCHANGE_TIMEOUT 15s -> 45s -- the
-# actual root cause of CADS-Tunnel#494, pinned by the operator via live edge logs).
-# Confirmed a strict descendant of 72394eb/6894a8a/883e20f/fda4f4d (git merge-base
-# --is-ancestor checked against all four before bumping) -- every #248 fix above is
-# still included, this only adds the admission-timeout fix (#140) and the #16 TCP
-# dial-fallback fix on top. Keep in sync with Alice.Dockerfile/Dockerfile/
-# compose.a2a-demo.yml/compose.a2a-demo.selfservice.override.yml's own CT_AGENT_REF.
-ARG CT_AGENT_REF=3823343fdc47ea4ed91819cb68bfa8e89399f3f8
+# Bumped 2026-08-19 to v0.5.7 (CADS-Tunnel#587): the previous pin
+# (3823343fdc47ea4ed91819cb68bfa8e89399f3f8) was captured 2026-08-13 but had silently
+# drifted 77 commits/~6 days behind ct-agent main by the time this was caught -- this
+# repo has its own separate pinning family, invisible to CADS-Tunnel's own
+# every_ct_agent_pin_matches_the_release guard test (which only scans CADS-Tunnel's
+# tree). Most importantly this pulls in ct-agent#35/#41 (Noise-key attestation now
+# enforced on all three channel-session code paths -- was previously enforced on none
+# for a raw-pinned commit this old). Using a real tag (not another bare commit) from
+# here on, matching CADS-Tunnel's own relay-node.Dockerfile convention -- a tag is a
+# CI-gated, version-checked release with published binaries. Keep in sync with
+# Alice.Dockerfile/Dockerfile/compose.a2a-demo.yml/
+# compose.a2a-demo.selfservice.override.yml's own CT_AGENT_REF.
+ARG CT_AGENT_REF=v0.5.7
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,id=cargo-registry-a2a-agent,target=/usr/local/cargo/registry \

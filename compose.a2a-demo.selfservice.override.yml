@@ -39,10 +39,12 @@ services:
       context: .
       dockerfile: Alice.Dockerfile
       args:
-        # Bumped 2026-08-13 to v0.4.8 (3823343f, ADMISSION_EXCHANGE_TIMEOUT
-        # 15s -> 45s) -- keep in sync with Agent.Dockerfile/Alice.Dockerfile/
-        # Dockerfile/compose.a2a-demo.yml's own CT_AGENT_REF.
-        - CT_AGENT_REF=${CT_AGENT_REF:-3823343fdc47ea4ed91819cb68bfa8e89399f3f8}
+        # Bumped 2026-08-19 to v0.5.7 (CADS-Tunnel#587): the previous pin had
+        # silently drifted 77 commits/~6 days behind ct-agent main -- pulls in
+        # ct-agent#35/#41 (Noise-key attestation). Keep in sync with
+        # Agent.Dockerfile/Alice.Dockerfile/Dockerfile/compose.a2a-demo.yml's
+        # own CT_AGENT_REF.
+        - CT_AGENT_REF=${CT_AGENT_REF:-v0.5.7}
     environment:
       - CT_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL}
       - CT_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port}

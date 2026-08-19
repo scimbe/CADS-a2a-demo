@@ -27,12 +27,18 @@ RUN apt-get update \
 # -- this pin documents what /home/becke/alice-host/ct-agent on the plane host should
 # match, extracted the same way (docker build + docker cp) rather than run in place.
 #
-# Bumped 2026-08-13 to v0.4.8 (3823343f, ADMISSION_EXCHANGE_TIMEOUT 15s -> 45s) --
-# confirmed a strict descendant of this pin's whole #248 fix chain (72394eb/6894a8a/
-# 883e20f/fda4f4d all verified ancestors). Must move together with Agent.Dockerfile/
-# Dockerfile's own CT_AGENT_REF (same reasoning as every earlier #248 bump above) --
-# remember to also re-extract this into /home/becke/alice-host/ on the plane host.
-ARG CT_AGENT_REF=3823343fdc47ea4ed91819cb68bfa8e89399f3f8
+# Bumped 2026-08-19 to v0.5.7 (CADS-Tunnel#587): the previous pin
+# (3823343fdc47ea4ed91819cb68bfa8e89399f3f8) had silently drifted 77 commits/~6 days
+# behind ct-agent main -- pulls in ct-agent#35/#41 (Noise-key attestation now enforced
+# on all three channel-session paths). Using a real tag from here on, matching
+# CADS-Tunnel's own relay-node.Dockerfile convention. Must move together with
+# Agent.Dockerfile/Dockerfile's own CT_AGENT_REF (same reasoning as every earlier
+# bump above) -- NOTE: /home/becke/alice-host/'s actual running binary is a real
+# host-native process with no systemd unit, shared with an unrelated CADS-devsystem
+# github-issue-agent loop process; re-extracting into it is a separate, riskier step
+# than this Dockerfile pin and is being tracked apart (see the #587 follow-up note),
+# not assumed done just because this pin moved.
+ARG CT_AGENT_REF=v0.5.7
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,id=cargo-registry-a2a-alice,target=/usr/local/cargo/registry \

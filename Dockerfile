@@ -34,13 +34,13 @@ RUN apt-get update \
 # with Alice.Dockerfile's pin (below) -- she's the responder every scenario dials, so a
 # pin skew here means only one side of a session logs the new detail.
 #
-# Bumped 2026-08-13 to v0.4.8 (3823343f, ADMISSION_EXCHANGE_TIMEOUT 15s -> 45s -- the
-# actual root cause of CADS-Tunnel#494, pinned by the operator via live edge logs).
-# Confirmed a strict descendant of 72394eb/6894a8a/883e20f/fda4f4d before bumping
-# (git merge-base --is-ancestor checked against all four) -- every #248 fix above
-# stays included. Keep in sync with Agent.Dockerfile/Alice.Dockerfile's own
-# CT_AGENT_REF.
-ARG CT_AGENT_REF=3823343fdc47ea4ed91819cb68bfa8e89399f3f8
+# Bumped 2026-08-19 to v0.5.7 (CADS-Tunnel#587): the previous pin
+# (3823343fdc47ea4ed91819cb68bfa8e89399f3f8) had silently drifted 77 commits/~6 days
+# behind ct-agent main -- pulls in ct-agent#35/#41 (Noise-key attestation now enforced
+# on all three channel-session paths). Using a real tag from here on, matching
+# CADS-Tunnel's own relay-node.Dockerfile convention. Keep in sync with
+# Agent.Dockerfile/Alice.Dockerfile's own CT_AGENT_REF.
+ARG CT_AGENT_REF=v0.5.7
 RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
 WORKDIR /build
 RUN --mount=type=cache,id=cargo-registry-a2a-bridge-ctagent,target=/usr/local/cargo/registry \
