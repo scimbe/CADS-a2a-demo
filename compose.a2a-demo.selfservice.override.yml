@@ -58,6 +58,11 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # #1: same #312 rationale as compose.a2a-demo.yml's services -- this service
+    # only exists in this override (no base-file entry to inherit a bound from).
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 0.5
 
 networks:
   default:

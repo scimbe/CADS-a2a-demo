@@ -115,6 +115,12 @@ services:
     # being briefly unavailable at boot, same as it always has for any other peer.
     restart: unless-stopped
     logging: *default-logging
+    # #1: same #312 rationale as CADS-Tunnel's core plane services -- this runs on
+    # the same swap-less shared host as production edge/control-plane, so an
+    # unbounded container here is one bad spike away from starving them too.
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 0.5
 
   a2a-demo-origin:
     build:
@@ -130,6 +136,10 @@ services:
       - a2a-demo-bridge
     restart: unless-stopped
     logging: *default-logging
+    # #1: same #312 rationale as a2a-demo-bridge above.
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 0.5
 
   a2a-demo-agent:
     build:
@@ -163,6 +173,10 @@ services:
       - a2a-demo-origin
     restart: unless-stopped
     logging: *default-logging
+    # #1: same #312 rationale as a2a-demo-bridge above.
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: 0.5
     volumes:
       - a2a_demo_agent_state:/var/lib/ct-agent
 
