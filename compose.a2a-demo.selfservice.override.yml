@@ -44,7 +44,7 @@ services:
         # ct-agent#35/#41 (Noise-key attestation). Keep in sync with
         # Agent.Dockerfile/Alice.Dockerfile/Dockerfile/compose.a2a-demo.yml's
         # own CT_AGENT_REF.
-        - CT_AGENT_REF=${CT_AGENT_REF:-v0.5.7}
+        - CT_AGENT_REF=${CT_AGENT_REF:-v0.7.22}
     environment:
       - CT_AGENT_CP_URL=${A2A_AGENT_CP_URL:?control-plane URL}
       - CT_CHANNEL_BROKER=${A2A_CHANNEL_BROKER:?edge broker host:port}
