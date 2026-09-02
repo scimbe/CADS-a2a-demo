@@ -1,0 +1,15 @@
+# Self-service variant: served through the workflow-maintainer portal account's
+# own free-tier tunnel (a2a-demo.bunsenbrenner.org), while the tunnel is in Gelb
+# (see CADS-Tunnel docs/agent-onboarding.md "Certificate status"). The edge
+# terminates external TLS itself with a shared cert and relays plain HTTP to
+# the origin -- so this listens on plain :80, no `tls` directive, until
+# `ct-agent certificate` reaches Grün and this file gets updated to serve its
+# own fullchain.pem/privkey.pem on :443 like the base Caddyfile does. Same
+# pattern as CADS-webconference-demo's own Caddyfile.selfservice.
+:80 {
+	reverse_proxy a2a-demo-bridge:8790
+	encode gzip
+	header {
+		X-Content-Type-Options "nosniff"
+	}
+}
