@@ -38,7 +38,7 @@ RUN apt-get update \
 # github-issue-agent loop process; re-extracting into it is a separate, riskier step
 # than this Dockerfile pin and is being tracked apart (see the #587 follow-up note),
 # not assumed done just because this pin moved.
-ARG CT_AGENT_REF=v0.7.22
+ARG CT_AGENT_REF=v0.7.24
 # Optional gh-token secret (--secret id=gh_token,src=<file>): GitHub's anonymous
 # git-clone rate limit for this host's IP was hit 2026-09-02 (same fix already
 # applied to CADS-cookbook-demo/CADS-DEMO-deutschlandatlas-callcenter/

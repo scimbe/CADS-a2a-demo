@@ -152,7 +152,7 @@ services:
         # three channel-session paths) -- keep in sync with Agent.Dockerfile/
         # Alice.Dockerfile/Dockerfile/compose.a2a-demo.selfservice.override.yml's
         # own CT_AGENT_REF.
-        - CT_AGENT_REF=${CT_AGENT_REF:-v0.7.22}
+        - CT_AGENT_REF=${CT_AGENT_REF:-v0.7.24}
     environment:
       - CT_AGENT_MODE=browser
       - CT_AGENT_FRAMED_FALLBACK=1  # CADS-Tunnel#528

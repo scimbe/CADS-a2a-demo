@@ -40,7 +40,7 @@ RUN apt-get update \
 # on all three channel-session paths). Using a real tag from here on, matching
 # CADS-Tunnel's own relay-node.Dockerfile convention. Keep in sync with
 # Agent.Dockerfile/Alice.Dockerfile's own CT_AGENT_REF.
-ARG CT_AGENT_REF=v0.7.22
+ARG CT_AGENT_REF=v0.7.24
 # Optional gh-token secret (--secret id=gh_token,src=<file>): GitHub's anonymous
 # git-clone rate limit for this host's IP was hit 2026-09-02 (same fix already
 # applied to CADS-cookbook-demo/CADS-DEMO-deutschlandatlas-callcenter/
