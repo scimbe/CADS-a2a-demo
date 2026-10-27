@@ -2,3 +2,5 @@
 .env
 .env.*
 .claude-flow/
+nordwind/deploy/generated/
+nordwind/deploy/hub.env

@@ -1,0 +1,33 @@
+# Cloud-Kern hub image: real ct-agent (the hub's own channel identity) + nordwind-hub.
+# Build context = repo root:  docker build -f nordwind/deploy/Dockerfile.hub .
+ARG CT_AGENT_REF=v0.7.24
+FROM rust:1-slim-bookworm AS agent
+ARG CT_AGENT_REF
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN git clone https://github.com/scimbe/ct-agent.git /build && cd /build && git checkout "${CT_AGENT_REF}"
+WORKDIR /build
+RUN --mount=type=cache,id=cargo-registry-nw-agent,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-target-nw-agent,target=/build/target \
+    cargo build --release --locked --jobs 1 && cp target/release/ct-agent /tmp/ct-agent
+
+FROM rust:1-slim-bookworm AS hub
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /work
+# data dependency: forces BuildKit to run the two compiles one after the other (swap-less host)
+COPY --from=agent /tmp/ct-agent /tmp/.agent-done
+COPY Cargo.toml Cargo.lock* ./
+COPY src src
+COPY web web
+COPY index.html index.html
+RUN --mount=type=cache,id=cargo-registry-nw-hub,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-target-nw-hub,target=/work/target \
+    cargo build --release --jobs 1 --bin nordwind-hub && cp target/release/nordwind-hub /tmp/nordwind-hub
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* && useradd -m -u 10001 nordwind
+COPY --from=agent /tmp/ct-agent /usr/local/bin/ct-agent
+COPY --from=hub /tmp/nordwind-hub /usr/local/bin/nordwind-hub
+USER nordwind
+ENV NW_LISTEN=0.0.0.0:8791 CT_AGENT_BIN=/usr/local/bin/ct-agent NW_NODES_FILE=/etc/nordwind/nodes.json
+EXPOSE 8791
+ENTRYPOINT ["/usr/local/bin/nordwind-hub"]

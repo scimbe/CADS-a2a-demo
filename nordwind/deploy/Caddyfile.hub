@@ -1,0 +1,46 @@
+# Origin for https://a2a-demo.bunsenbrenner.org (Nordwind flagship).
+#
+# LOGIN: every route except two goes through the portal's login gate (Keycloak OIDC,
+# per-hostname e-mail allow-list):  forward_auth -> https://bunsenbrenner.org/gate/check
+# Caddy copies the verified e-mail into X-Gate-Email; the hub FAILS CLOSED without it
+# (the gate answers 200 + empty header when "login required" is not switched on for the host).
+# Same shape as CADS-agent-marketplace/deploy/marketplace-admin/Caddyfile.
+#
+# Two routes are deliberately outside the gate:
+#   /healthz        liveness (no data)
+#   /node/hop/*     live hop reports from the Zentrale node. It has no browser session; the hub
+#                   authorises each report with a random per-run token that only the end-to-end
+#                   encrypted request carried, valid only while that run is active.
+#
+# TLS: while the tunnel is Gelb the edge terminates TLS and forwards plain HTTP, hence
+# auto_https off + plain :443 (see the old Caddyfile in this repo for the story).
+{
+	auto_https off
+}
+
+:443 {
+	@open path /healthz /node/hop/*
+	handle @open {
+		reverse_proxy nordwind-hub:8791
+	}
+	handle {
+		route {
+			request_header -X-Gate-Email
+			forward_auth https://{$CT_GATE_UPSTREAM_HOST:bunsenbrenner.org} {
+				uri /gate/check
+				copy_headers X-Gate-Email
+				header_up -Connection
+				header_up -Upgrade
+			}
+			reverse_proxy nordwind-hub:8791 {
+				flush_interval -1
+			}
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+	encode gzip
+}

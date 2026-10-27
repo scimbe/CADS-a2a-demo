@@ -1,3 +1,38 @@
+# Nordwind Firmennetz: verteilte Agenten, live in der Topologie des Kontos
+
+`nordwind-hub` (dieses Repo, `src/bin/nordwind_hub.rs`, `web/`) zeigt die Topologie **aus dem Konto**
+(`/me/topologies` der Control Plane) und fuehrt das Szenario "Toern-Briefing Samstag Bremen" mit echten
+Channel-Calls aus: Cloud-Kern -> Zentrale -> Werkstatt (lokales LLM) -> Hafenbuero (Route/Wetter) -> Ergebnis.
+Jeder Standort ist ein eigener `ct-agent` mit eigenem Holder-Key, ohne offene Ports; der Edge sieht nur Chiffretext.
+
+Betrieb und Befehle: [`nordwind/docs/RUNBOOK-nordwind.md`](nordwind/docs/RUNBOOK-nordwind.md).
+Lokal ohne Konto (echte Prozesse, direkte Adressen): `python3 nordwind/scripts/nordwind-local-lab.py`.
+
+**Login.** Zugriff nur mit bunsenbrenner-Login: Caddy `forward_auth` auf `https://bunsenbrenner.org/gate/check`
+(Keycloak-OIDC, pro Hostname gepflegte E-Mail-Allowlist), Header `X-Gate-Email`. Gewaehlt, weil bereits produktiv
+(marketplace-admin, webconference), keine neue Keycloak-Client-/Redirect-Konfiguration noetig und keine eigenen
+Sessions im Hub. Der Hub ist fail-closed: ohne nicht-leeres `X-Gate-Email` antwortet er 403 (das Gate liefert 200 mit
+leerem Header, wenn "login required" fuer den Host aus ist). Einzige offene Routen: `/healthz` und `/node/hop/<run>`
+(Capability-URL, Zufallstoken pro Lauf, nur waehrend des Laufs gueltig, hart validiert).
+
+**Topologie-Quelle.** Das Gate liefert nur die E-Mail, kein Bearer-Token; die Control Plane liefert geteilte Topologien
+nur an eine Portal-Session aus. Der Hub liest deshalb die Topologie des Demo-Kontos (Service Account, Client-Credentials)
+und zeigt sie jedem angemeldeten Betrachter. `nordwind-seed-topology.sh` teilt sie per E-Mail, damit sie auch im
+Portal-Editor der Beteiligten erscheint. Faellt die Control Plane aus, zeigt die Seite die lokale Vorlage und sagt das.
+
+**Echt vs. Anzeige.** Online-Zustand, Latenz, Betriebssystem und Bytes stammen ausschliesslich aus echten Calls
+(`mesh_status`: Zentrale pingt Werkstatt/Hafenbuero; Hop-Bytes = vom Agenten unterhalb von Noise gezaehlte Chiffretext-Bytes).
+Live-Hop-Meldungen von der Zentrale sind ein Seitenkanal fuer die Anzeige; die verbindliche Spur steckt in der
+verschluesselten Antwort (Tag `trace` statt `live`). Faellt LLM oder Wetterquelle aus, scheitert der Hop sichtbar.
+
+**Ereignisse** (`GET /api/events`, SSE, JSON je Zeile; Snapshot `GET /api/state`, Graph `GET /api/topology`):
+`run_start{run,topic}` · `hop{run,seq,from,to,channel,service,state:start|ok|error,dur_ms,sent_bytes,recv_bytes,plain_out,plain_in,transport,source:hub|node-report|trace,error?}` ·
+`run_done{run,total_ms,briefing}` · `run_error{run,error}` · `graph{}` (neu laden). Knoten-Keys: `cloud, zentrale, hafenbuero, werkstatt, aussendienst`.
+Start: `POST /api/scenario`. Tests: `cargo test` (inkl. Integrationstest mit echten ct-agent-Prozessen, `CT_AGENT_BIN` setzen),
+`(cd nordwind/node && python3 -m unittest -q test_nordwind_node)`, `python3 nordwind/scripts/test_seed_topology.py`.
+
+---
+
 # CADS-a2a-demo — a real Agent-Fabric channel call, live in the browser
 
 `https://a2a-demo.bunsenbrenner.org` (once deployed) watches a genuine **broker-mediated**

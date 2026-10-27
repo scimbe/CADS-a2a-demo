@@ -1,0 +1,45 @@
+# Nordwind nodes. ONE file, started per host with a profile (no inbound ports anywhere):
+#   ssh-united.becke.biz   (Hafenbüro)  docker compose -f nordwind/deploy/compose.nordwind.yml --profile hafenbuero up -d --build
+#   ssh.labor-setup.com    (Werkstatt)  docker compose -f nordwind/deploy/compose.nordwind.yml --profile werkstatt up -d --build
+#   ssh.cs4f.org (macOS)   (Zentrale)   preferred: native, see nordwind/docs/RUNBOOK-nordwind.md; Docker variant: --profile zentrale
+# Each host needs only ITS OWN env file from nordwind-provision.sh (never copy the others).
+x-logging: &log {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+x-node: &node
+  build: {context: ../.., dockerfile: nordwind/deploy/Dockerfile.node, args: {CT_AGENT_REF: "${CT_AGENT_REF:-v0.7.24}"}}
+  restart: unless-stopped
+  logging: *log
+  read_only: true
+  tmpfs: [/tmp]
+  mem_limit: 192m
+  cpus: 0.5
+services:
+  hafenbuero:
+    <<: *node
+    profiles: [hafenbuero]
+    env_file: [generated/hafenbuero.env]
+    environment: &plane
+      - NW_CP_URL=${NW_CP_URL:-https://bunsenbrenner.org}
+      - CT_CHANNEL_BROKER=${CT_CHANNEL_BROKER:-bunsenbrenner.org:4435}
+      - CT_CHANNEL_RELAY=${CT_CHANNEL_RELAY:-bunsenbrenner.org:4436}
+      - CT_CHANNEL_FRONT_DOOR=${CT_CHANNEL_FRONT_DOOR:-bunsenbrenner.org:443}
+      - NW_FRONT_DOOR_ONLY=${NW_FRONT_DOOR_ONLY:-0}
+  werkstatt:
+    <<: *node
+    profiles: [werkstatt]
+    env_file: [generated/werkstatt.env]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      - NW_CP_URL=${NW_CP_URL:-https://bunsenbrenner.org}
+      - CT_CHANNEL_BROKER=${CT_CHANNEL_BROKER:-bunsenbrenner.org:4435}
+      - CT_CHANNEL_RELAY=${CT_CHANNEL_RELAY:-bunsenbrenner.org:4436}
+      - CT_CHANNEL_FRONT_DOOR=${CT_CHANNEL_FRONT_DOOR:-bunsenbrenner.org:443}
+      - NW_FRONT_DOOR_ONLY=${NW_FRONT_DOOR_ONLY:-0}
+      # local LLM on the GPU host (Ollama on the host, reached via the docker host gateway)
+      - NORDWIND_OLLAMA_URL=${NORDWIND_OLLAMA_URL:-http://host.docker.internal:11434}
+      - NORDWIND_OLLAMA_MODEL=${NORDWIND_OLLAMA_MODEL:-llama3.2}
+      - NORDWIND_GPU_LABEL=${NORDWIND_GPU_LABEL:-}
+  zentrale:
+    <<: *node
+    profiles: [zentrale]
+    env_file: [generated/zentrale.env]
+    environment: *plane
