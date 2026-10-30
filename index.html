@@ -106,7 +106,7 @@
  <div class="hero-inner">
   <div class="brand"><span class="flame"></span><a href="https://bunsenbrenner.org/">Bunsenbrenner.org</a><span>/ a2a-demo</span></div>
   <h1>Agents on separate networks, no open ports on either side.</h1>
-  <p class="lede">Live below: real machines, encrypted end-to-end, reaching each other through the platform's relay — neither side exposes a listener or a port. (`ct-agent` can upgrade a session to a genuine direct, relay-free path when both peers are reachable — this demo pins both bob-1 and bob-2 to relay-only, so that upgrade never fires here; see <a href="https://docs.bunsenbrenner.org/explanation/agent-fabric-channels/">how it works</a>.)</p>
+  <p class="lede">Live below: real agents, encrypted end-to-end, reaching each other through the platform's relay — neither side exposes a listener or a port. (`ct-agent` can upgrade a session to a genuine direct, relay-free path when both peers are reachable — this demo pins both bob-1 and bob-2 to relay-only, so that upgrade never fires here; see <a href="https://docs.bunsenbrenner.org/explanation/agent-fabric-channels/">how it works</a>.)</p>
  </div>
 </header>
 <main>
@@ -125,7 +125,7 @@
    </div>
    <canvas class="stage topology" id="topo-stage" width="900" height="240" aria-label="Topology diagram: alice, bob-1, and bob-2 as three nodes, with live/dashed edges reflecting whether each pair is currently reachable."></canvas>
    <div class="diagram-foot">
-    <span>live heartbeat status, no polling delay</span>
+    <span id="topo-foot">live heartbeat status</span>
    </div>
   </div>
  </section>
@@ -281,6 +281,26 @@
     bob2: "alice → bob-2 (public IP)",
   };
 
+  // PAGE-LOGIC-START (pure, exercised by tests/page.test.mjs)
+  // ct-agent prints the service's JSON-RPC result. A call that reached the peer can still have
+  // failed there, so only {"ok":true} counts as success.
+  function parseReply(raw) {
+    let v;
+    try { v = JSON.parse(raw); } catch { return { ok: true, text: raw }; }
+    if (v && typeof v === "object" && "ok" in v) {
+      return v.ok === true
+        ? { ok: true, text: String(v.output ?? "") }
+        : { ok: false, text: String(v.error ?? v.output ?? raw) };
+    }
+    return { ok: true, text: raw };
+  }
+
+  function topologyNote(s) {
+    if (s.bob1_provisioned || s.bob2_provisioned) return "live heartbeat status";
+    return "bob-1 and bob-2 are not set up in this deployment. Only bob → alice runs: two containers on one host, connected only through the relay.";
+  }
+  // PAGE-LOGIC-END
+
   (function chat() {
     const statusEl = document.getElementById("status");
     const logEl = document.getElementById("log");
@@ -289,6 +309,16 @@
     const messageInput = document.getElementById("message");
     const select = document.getElementById("participant-select");
     let lastTransport = null; // null | "quic" | "tcp_443" | "direct"
+    let watchdog = null, lastOutcome = "";
+    const NO_ANSWER_MS = 100000; // bridge gives up after 90s and reports round_error
+    function finishRound() { clearTimeout(watchdog); watchdog = null; runBtn.disabled = false; }
+    function failRound(text) {
+      replyBox.className = "reply-box";
+      replyBox.textContent = "";
+      statusEl.textContent = text;
+      finishRound();
+    }
+    window._chatStreamLost = () => { if (watchdog) failRound("connection to the live stream lost, reload the page"); };
     const TRANSPORT_LABEL = { quic: "via relay (QUIC)", tcp_443: "via relay (:443)", direct: "DIRECT — no relay" };
 
     function endpointFor(key) { return key === "bob" ? "/run" : "/run/" + key; }
@@ -323,13 +353,18 @@
       replyBox.className = "reply-box";
       replyBox.innerHTML = '<div class="empty-hint">Waiting for the real call to complete&hellip;</div>';
       statusEl.textContent = "starting…";
-      const resp = await fetch(endpointFor(select.value), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message }),
-      });
-      if (resp.status === 429) { statusEl.textContent = "a round is already in flight, wait for it"; runBtn.disabled = false; }
-      else if (!resp.ok) { statusEl.textContent = "rejected: " + (await resp.text()); runBtn.disabled = false; }
+      lastOutcome = "";
+      let resp;
+      try {
+        resp = await fetch(endpointFor(select.value), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+      } catch { failRound("could not reach the demo server"); return; }
+      if (resp.status === 429) failRound("a round is already in flight, wait for it");
+      else if (!resp.ok) failRound("rejected: " + (await resp.text()));
+      else watchdog = setTimeout(() => failRound("no answer from the bridge, nothing confirmed"), NO_ANSWER_MS);
     });
 
     window._chatOnEvent = (msg) => {
@@ -364,21 +399,23 @@
           logLineInto(logEl, msg.line, "sys");
           break;
         case "reply_received": {
-          replyBox.className = "reply-box win";
-          replyBox.textContent = msg.reply;
-          logLineInto(logEl, "reply: " + msg.reply, "reply");
+          const reply = parseReply(msg.reply);
+          replyBox.className = reply.ok ? "reply-box win" : "reply-box";
+          replyBox.textContent = reply.text;
+          logLineInto(logEl, "reply: " + msg.reply, reply.ok ? "reply" : "err");
           const via = lastTransport ? ` (${TRANSPORT_LABEL[lastTransport] || lastTransport})` : "";
-          statusEl.textContent = "call complete" + via;
+          lastOutcome = (reply.ok ? "call complete" : "the peer reported an error") + via;
+          statusEl.textContent = lastOutcome;
           break;
         }
         case "round_error":
           replyBox.className = "reply-box";
           replyBox.innerHTML = '<div class="empty-hint">Error — see log below.</div>';
           logLineInto(logEl, "ERROR: " + msg.message, "err");
-          statusEl.textContent = "error";
-          runBtn.disabled = false;
+          statusEl.textContent = lastOutcome = "error";
+          finishRound();
           break;
-        case "round_done": statusEl.textContent = "round " + msg.round + " done"; runBtn.disabled = false; break;
+        case "round_done": statusEl.textContent = `round ${msg.round}: ${lastOutcome || "done"}`; finishRound(); break;
       }
     };
 
@@ -394,12 +431,13 @@
     if (msg.type === "presence") { refreshStatus(); return; }
     window._chatOnEvent(msg);
   };
-  es.onerror = () => {};
+  es.onerror = () => { if (es.readyState === EventSource.CLOSED) window._chatStreamLost(); };
 
   function refreshStatus() {
     fetch("/status").then((r) => r.json()).then((s) => {
       applyPresence(!!s.bob1_online, !!s.bob2_online);
       window._applyChatOnlineState(!!s.bob1_online, !!s.bob2_online);
+      document.getElementById("topo-foot").textContent = topologyNote(s);
     }).catch(() => {});
   }
   refreshStatus();
