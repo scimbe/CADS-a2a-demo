@@ -1,0 +1,14 @@
+{
+  "quelle": "Stammdaten Hafenbüro Bremen (Demo-Daten, ca.-Werte)",
+  "name": "Weser abwärts: Bremen – Vegesack – Brake – Bremerhaven",
+  "wetter_ort": {"name": "Weser / Bremerhaven", "lat": 53.55, "lon": 8.58},
+  "legs": [
+    {"von": "Bremen Schlachte", "nach": "Vegesack", "km": 21},
+    {"von": "Vegesack", "nach": "Brake", "km": 26},
+    {"von": "Brake", "nach": "Bremerhaven", "km": 41}
+  ],
+  "hinweise": [
+    "Tidenfahrplan beachten: mit ablaufendem Wasser weseraufwaerts planen",
+    "Berufsschiffahrt hat Vorrang, Funkkanal 16 abhoeren"
+  ]
+}

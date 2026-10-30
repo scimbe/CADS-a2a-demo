@@ -4,9 +4,18 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 
+[lib]
+name = "nordwind"
+path = "src/lib.rs"
+
 [[bin]]
 name = "a2a-demo-bridge"
 path = "src/main.rs"
+
+# "Verteiltes Firmennetz mit Agenten" (Nordwind Bootsservice GmbH): the flagship dashboard.
+[[bin]]
+name = "nordwind-hub"
+path = "src/bin/nordwind_hub.rs"
 
 [dependencies]
 # No ct-common/ct-agent crate dependency at all -- unlike CADS-auction-demo, this bridge
@@ -27,4 +36,4 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 # `tls` feature required: the control plane is not always compose-internal/plain-HTTP --
 # a remote (non-co-located) plane's CP_URL is a real https:// endpoint (e.g.
 # https://bunsenbrenner.org), and ureq has no HTTPS backend without this feature.
-ureq = { version = "2", default-features = false, features = ["tls"] }
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
