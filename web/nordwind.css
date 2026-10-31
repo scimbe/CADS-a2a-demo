@@ -40,3 +40,15 @@ details>div{padding:0 0 12px;font-size:.9rem;overflow-wrap:anywhere}
 table{border-collapse:collapse;width:100%;font-size:.8rem}th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+a{color:var(--acc)}
+.back{display:inline-flex;align-items:center;min-height:44px;font-size:.92rem;text-decoration:none}
+.back:hover{text-decoration:underline}
+footer.support{max-width:760px;margin:32px auto 0;padding:20px 16px 28px;border-top:1px solid var(--line);text-align:center;font-size:.9rem;color:var(--mut)}
+footer.support p{margin:10px auto;max-width:560px}
+.brand{display:inline-flex;align-items:center;gap:.5rem;font-weight:700;color:var(--fg);text-decoration:none}
+.brand .flame{width:8px;height:8px;border-radius:50%;background:#d98a4f;box-shadow:0 0 0 3px rgba(217,138,79,.22)}
+.brand .tld{color:var(--mut);font-weight:400}
+.support-links,.legal-links{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;margin:8px 0}
+.support-links a,.legal-links a{display:inline-flex;align-items:center;min-height:44px}
+.legal-links{font-size:.8rem}
+footer.support .copyright{font-size:.72rem;margin:4px 0 0}
