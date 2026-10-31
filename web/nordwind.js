@@ -5,6 +5,7 @@ const T = {
   de: {
     h1: 'Fünf Standorte, ein Firmennetz: Agenten, die ohne offene Ports zusammenarbeiten.',
     go: 'Szenario starten', running: 'Läuft …', skip: 'Zum Start-Button',
+    back: '← Alle Demos', supportNote: 'Bunsenbrenner ist kostenlos nutzbar und läuft mit gespendeter Zeit und Serverkosten. Wenn es dir geholfen hat, hält ein kleiner Beitrag das Labor am Laufen.', supportMember: '💙 Mitglied werden →', supportCoffee: '☕ Einen Kaffee spendieren →',
     mapTitle: 'Live-Topologie des Kontos', legend: 'grün = verbunden · gestrichelt = offline · Punkt = laufender Aufruf',
     s_result: 'Ergebnis', s_crypto: 'Verschlüsselung', s_source: 'Quelle der Topologie',
     who: 'Angemeldet als', lab: 'Lab-Modus: lokal, ohne Login.', noresult: 'Noch kein Lauf.',
@@ -20,6 +21,7 @@ const T = {
   en: {
     h1: 'Five sites, one company network: agents cooperating without a single open port.',
     go: 'Start scenario', running: 'Running …', skip: 'Skip to start button',
+    back: '← All demos', supportNote: 'Bunsenbrenner is free to use and runs on donated time and server costs. If it helped you, a small contribution keeps the lab running.', supportMember: '💙 Support as a member →', supportCoffee: '☕ Buy me a coffee →',
     mapTitle: 'Live topology of the account', legend: 'green = connected · dashed = offline · dot = call in flight',
     s_result: 'Result', s_crypto: 'Encryption', s_source: 'Topology source',
     who: 'Signed in as', lab: 'Lab mode: local, no login.', noresult: 'No run yet.',
@@ -164,6 +166,8 @@ function applyLang() {
   $('maptitle').textContent = t('mapTitle'); $('legend').textContent = t('legend');
   ['result', 'crypto', 'source'].forEach((k) => { $('s-' + k).textContent = t('s_' + k); });
   document.querySelector('.skip').textContent = t('skip');
+  $('back').textContent = t('back'); $('back').href = 'https://demos-34a13a96.bunsenbrenner.org/' + (lang === 'en' ? '?lang=en' : '');
+  $('support-note').textContent = t('supportNote'); $('support-member').textContent = t('supportMember'); $('support-coffee').textContent = t('supportCoffee');
   $('who').textContent = me ? `${t('who')} ${me.email}` : '';
   setRunning(running); renderGraph(); renderCrypto();
   if (!$('result').firstChild) $('result').textContent = t('noresult');
