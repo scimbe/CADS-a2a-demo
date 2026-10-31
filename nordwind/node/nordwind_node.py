@@ -299,7 +299,7 @@ def build_prompt(topic: str) -> str:
 def svc_draft_text(req: dict, opener=None) -> dict:
     topic = clean_topic(req.get("topic"))
     model = os.environ.get("NORDWIND_OLLAMA_MODEL", "llama3.2")
-    body = json.dumps({"model": model, "prompt": build_prompt(topic), "stream": False,
+    body = json.dumps({"model": model, "prompt": build_prompt(topic), "stream": False, "think": False,
                        "options": {"num_predict": 220, "temperature": 0.4}}).encode()
     http = urllib.request.Request(ollama_url() + "/api/generate", data=body, method="POST",
                                   headers={"content-type": "application/json"})
