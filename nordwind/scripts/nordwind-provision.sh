@@ -74,8 +74,13 @@ defs = [
  ("zentrale",     "Zentrale Hamburg",        "HQ Hamburg",       "macOS",   "hub",    False),
  ("hafenbuero",   "Hafenbüro Bremen",        "Harbour office Bremen", "Linux", "site", False),
  ("werkstatt",    "Werkstatt (GPU)",         "Workshop (GPU)",   "Linux",   "gpu",    False),
- ("aussendienst", "Außendienst (Android)",   "Field service (Android)", "Android", "mobile", True),
 ]
+# The Außendienst node is described as what it really is. Default: a Linux field node (container,
+# outbound-only like a phone). Set NW_AUSSENDIENST_KIND=android only for a real Android/Termux device.
+if os.environ.get("NW_AUSSENDIENST_KIND", "linux") == "android":
+    defs.append(("aussendienst", "Außendienst (Android)", "Field service (Android)", "Android", "mobile", True))
+else:
+    defs.append(("aussendienst", "Außendienst (Feldknoten)", "Field service (field node)", "Linux", "site", False))
 nodes = [dict(id=i, label_de=d, label_en=e, holder_pubkey=pub(i), os_hint=o, role=r, planned=p) for i, d, e, o, r, p in defs]
 json.dump(dict(nodes=nodes, channels=chans), open(f"{gen}/nodes.json", "w"), indent=2, ensure_ascii=False)
 PY

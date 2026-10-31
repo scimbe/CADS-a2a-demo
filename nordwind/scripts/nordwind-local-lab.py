@@ -62,7 +62,7 @@ def main():
     manifest = dict(
         nodes=[nd("cloud", "Cloud-Kern", "Cloud core", "Linux", "cloud", False, cloud), nd("zentrale", "Zentrale Hamburg", "HQ Hamburg", "macOS", "hub", False, zen),
                nd("hafenbuero", "Hafenbüro Bremen", "Harbour office Bremen", "Linux", "site", False, haf), nd("werkstatt", "Werkstatt (GPU)", "Workshop (GPU)", "Linux", "gpu", False, wer),
-               nd("aussendienst", "Außendienst (Android)", "Field service (Android)", "Android", "mobile", True, aus)],
+               nd("aussendienst", "Außendienst (Feldknoten)", "Field service (field node)", "Linux", "site", True, aus)],
         channels=[dict(name=n, a=a, b=b, id="") for n, a, b in [("cloud-zentrale", "cloud", "zentrale"), ("zentrale-werkstatt", "zentrale", "werkstatt"),
                                                                   ("zentrale-hafenbuero", "zentrale", "hafenbuero"), ("aussendienst-zentrale", "aussendienst", "zentrale")]])
     mf = f"{tmp}/nodes.json"

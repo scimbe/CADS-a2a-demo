@@ -24,10 +24,10 @@ if [ -z "${CT_CHANNEL_FRONT_DOOR_CERT:-}" ]; then
   export CT_CHANNEL_FRONT_DOOR_CERT
 fi
 
-# Services offered per channel (least privilege: the phone channel cannot ask for mesh_status).
+# Services offered per channel (least privilege: the field channel cannot ask for mesh_status or toern_briefing).
 services_for() {
   case "$NORDWIND_NODE:$1" in
-    zentrale:aussendienst-zentrale) echo "toern_briefing,ping" ;;
+    zentrale:aussendienst-zentrale) echo "feld_abruf,feld_quittung,ping" ;;
     zentrale:*) echo "toern_briefing,mesh_status,ping" ;;
     hafenbuero:*) echo "route_wetter,ping" ;;
     werkstatt:*) echo "draft_text,ping" ;;
@@ -51,6 +51,11 @@ serve_channel() {
     sleep 3
   done
 }
+
+# Außendienst is outbound-only (its grant is `initiate`): it serves nothing, it polls Zentrale.
+if [ "$NORDWIND_NODE" = aussendienst ]; then
+  exec python3 "$HERE/nordwind_node.py" field
+fi
 
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null; exit 0' TERM INT

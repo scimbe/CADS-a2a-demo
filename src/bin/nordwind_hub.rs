@@ -21,7 +21,7 @@ use tokio_stream::StreamExt;
 
 const TOPIC: &str = "Törn-Briefing Samstag Bremen";
 const KNOWN_NODES: [&str; 5] = ["cloud", "zentrale", "werkstatt", "hafenbuero", "aussendienst"];
-const KNOWN_SERVICES: [&str; 5] = ["toern_briefing", "draft_text", "route_wetter", "ping", "mesh_status"];
+const KNOWN_SERVICES: [&str; 6] = ["toern_briefing", "draft_text", "route_wetter", "ping", "mesh_status", "feld_auftrag"];
 const MAX_REPORTS_PER_RUN: usize = 20;
 const POLL_EVERY: Duration = Duration::from_secs(30);
 const CP_CACHE: Duration = Duration::from_secs(15);

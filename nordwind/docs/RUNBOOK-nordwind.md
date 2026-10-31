@@ -11,7 +11,8 @@ operator credential that the repo never holds.
 | Hafenbüro | ssh-united.becke.biz | `compose.nordwind.yml --profile hafenbuero` | none |
 | Werkstatt (GPU, Ollama) | ssh.labor-setup.com | `compose.nordwind.yml --profile werkstatt` + Ollama on the host | none |
 | Zentrale (macOS) | ssh.cs4f.org | native `node-run.sh` (section 4) | none |
-| Außendienst (Android) | phone | planned; identity + channel are already provisioned | none |
+| Außendienst (Feldknoten) | ssh-united.becke.biz | `compose.nordwind.yml --profile aussendienst`: outbound-only Linux container, rule-based, no model (section 3b) | none |
+| Außendienst (real Android) | phone | optional, not part of this deployment: provision with `NW_AUSSENDIENST_KIND=android` | none |
 
 Every node dials out to `bunsenbrenner.org` (broker 4435/udp, relay 4436/udp, front door 443/tcp).
 
@@ -70,6 +71,25 @@ Ollama must be reachable from the container at `NORDWIND_OLLAMA_URL` (default
 container: set `OLLAMA_HOST=0.0.0.0:11434` for the host service **and** firewall it, or run the
 Werkstatt natively like the Zentrale in section 4).
 
+## 3b. Außendienst (field node)
+
+The Außendienst grant is `initiate` only, so the node never accepts calls: like a phone it dials out and
+keeps a long-poll `feld_abruf` open at Zentrale. When a briefing run reaches hop 4, Zentrale hands the
+route and weather facts of that run to the pending poll; the node derives a field sheet from them
+(release / restriction, travel times, checklist; rules, no model) and returns it with `feld_quittung`.
+The hop is shown as `Zentrale -> Außendienst · feld_auftrag`; its byte counts are the ones measured by
+the node's own `ct-agent` initiator for the delivery call. If the node has not polled within 90 s, the run
+skips the hop and covers three sites (the result then has `aussendienst: null`), it never invents a field result.
+
+```bash
+scp nordwind/deploy/generated/aussendienst.env becke@ssh-united.becke.biz:CADS-a2a-demo/nordwind/deploy/generated/
+docker compose -f nordwind/deploy/compose.nordwind.yml --profile aussendienst up -d --build
+docker compose -f nordwind/deploy/compose.nordwind.yml logs -f aussendienst   # expect: polling aussendienst-zentrale
+```
+
+Zentrale must run this version of `nordwind/node` (it serves `feld_abruf` / `feld_quittung`) and the hub
+must know the service name `feld_auftrag` for live hop reports; without it the hop still appears, as a trace.
+
 ## 4. Zentrale (macOS, native)
 
 ```bash
@@ -80,7 +100,7 @@ NORDWIND_ENV_FILE=$PWD/nordwind/deploy/generated/zentrale.env ./nordwind/node/no
 ```
 
 Keep it running with `launchctl`/`tmux`. `node-run.sh` supervises one acceptor per served channel
-(`cloud-zentrale`, `aussendienst-zentrale`). The dashboard shows the OS from the node's own
+(`cloud-zentrale`, `aussendienst-zentrale`; the latter offers only `feld_abruf`, `feld_quittung`, `ping`). The dashboard shows the OS from the node's own
 `ping` reply, so a Docker-on-macOS Zentrale would honestly appear as Linux.
 
 ## 5. Hub + dashboard (ssh-united)
