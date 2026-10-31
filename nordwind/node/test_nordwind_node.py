@@ -1,3 +1,5 @@
+import json
+import io
 import datetime as dt, io, json, os, unittest
 import nordwind_node as n
 
@@ -83,6 +85,14 @@ class Services(unittest.TestCase):
             n.svc_draft_text({"topic": "t"}, opener=down)
         ok = lambda req, timeout: io.BytesIO(json.dumps({"response": " Hallo ", "model": "m", "eval_count": 5}).encode())
         self.assertEqual(n.svc_draft_text({}, opener=ok)["text"], "Hallo")
+
+    def test_draft_text_disables_thinking(self):
+        seen = {}
+        def op(req, timeout=None):
+            seen.update(json.loads(req.data.decode()))
+            return io.BytesIO(json.dumps({"response": "Hallo"}).encode())
+        n.svc_draft_text({}, opener=op)
+        self.assertIs(seen["think"], False)
 
     def test_orchestration_order_and_telemetry(self):
         calls, posted = [], []
