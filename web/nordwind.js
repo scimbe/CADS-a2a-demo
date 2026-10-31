@@ -14,7 +14,7 @@ const T = {
     cryptoText: 'Jeder Hop ist ein eigener Kanal mit Noise-Ende-zu-Ende-Verschlüsselung. Der Edge reicht nur Chiffretext durch. Gemessen werden die Bytes auf der Leitung (vom Agenten unterhalb der Verschlüsselung gezählt), der Klartext liegt nur an den Endpunkten.',
     hop: 'Hop', plain: 'Klartext', wire: 'Leitung', viaTrace: 'Trace = aus der verschlüsselten Antwort rekonstruiert, nicht live gemeldet.',
     srcCp: 'Control-Plane-Topologie', srcMf: 'Control-Plane nicht erreichbar, lokale Vorlage', at: 'Stand',
-    model: 'Modell', route: 'Route', weather: 'Wetter', km: 'km', kn: 'kn', gust: 'Böen', by: 'Text: Werkstatt · Fakten: Hafenbüro · Ablauf: Zentrale',
+    model: 'Modell', route: 'Route', weather: 'Wetter', km: 'km', kn: 'kn', gust: 'Böen', field: 'Außendienst', by: 'Text: Werkstatt · Fakten: Hafenbüro · Feldzettel: Außendienst · Ablauf: Zentrale',
     nodeLine: (l, s, os) => `${l}: ${s}${os ? ', ' + os : ''}`,
   },
   en: {
@@ -29,7 +29,7 @@ const T = {
     cryptoText: 'Every hop is its own channel with Noise end-to-end encryption. The edge only forwards ciphertext. Wire bytes are counted by the agent below the encryption layer; plaintext exists only at the endpoints.',
     hop: 'Hop', plain: 'plaintext', wire: 'wire', viaTrace: 'trace = reconstructed from the encrypted reply, not reported live.',
     srcCp: 'Control-plane topology', srcMf: 'Control plane unreachable, local template', at: 'as of',
-    model: 'Model', route: 'Route', weather: 'Weather', km: 'km', kn: 'kn', gust: 'gusts', by: 'Text: workshop · facts: harbour office · flow: HQ',
+    model: 'Model', route: 'Route', weather: 'Weather', km: 'km', kn: 'kn', gust: 'gusts', field: 'Field service', by: 'Text: workshop · facts: harbour office · field sheet: field service · flow: HQ',
     nodeLine: (l, s, os) => `${l}: ${s}${os ? ', ' + os : ''}`,
   },
 };
@@ -137,6 +137,8 @@ function renderResult(b) {
   const r = b.route, w = b.wetter;
   if (r) box.appendChild(h('p', '', `${t('route')}: ${r.name}, ${r.gesamt_km} ${t('km')}`));
   if (w) box.appendChild(h('p', '', `${t('weather')} ${w.datum} (${w.ort}): ${w.wind_kn_max} ${t('kn')}, ${t('gust')} ${w.boeen_kn_max} ${t('kn')}, ${w.temp_min_c}–${w.temp_max_c} °C, ${w.regen_mm} mm`));
+  const f = b.aussendienst;
+  if (f && f.zettel) box.appendChild(h('p', '', `${t('field')} (${f.geraet || '?'}): ${f.zettel}`));
   box.appendChild(h('p', 'chip', `${t('model')}: ${b.modell || '?'}${b.gpu ? ' · ' + b.gpu : ''} · ${t('by')}`));
 }
 

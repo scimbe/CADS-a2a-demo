@@ -12,7 +12,13 @@ Services (which node offers what is decided by `NORDWIND_NODE`):
   draft_text    werkstatt    local LLM (Ollama) drafts the briefing prose
   route_wetter  hafenbuero   route master data + live weather (Open-Meteo)
   mesh_status   zentrale     real `ping` calls to the neighbours, with RTT + wire bytes
-  toern_briefing zentrale    the orchestration: werkstatt -> hafenbuero -> result
+  toern_briefing zentrale    the orchestration: werkstatt -> hafenbuero -> aussendienst -> result
+  feld_abruf     zentrale    (called BY aussendienst) long-poll: hands out the pending field job
+  feld_quittung  zentrale    (called BY aussendienst) returns the field result for that job
+
+The Außendienst node is outbound-only like a phone: its channel grant is `initiate`, so it never
+accepts calls. It keeps a long-poll `feld_abruf` open at Zentrale, derives its field sheet from the
+job (rule based, no model) and hands it back with `feld_quittung`.
 
 Everything the orchestrator reports about a hop (latency, ciphertext bytes, transport) is
 measured from a REAL `ct-agent channel` initiator process it spawned for exactly that hop.
@@ -39,9 +45,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Which services each node role serves. `ping` everywhere.
 NODE_SERVICES = {
-    "zentrale": ["toern_briefing", "mesh_status", "ping"],
+    "zentrale": ["toern_briefing", "mesh_status", "feld_abruf", "feld_quittung", "ping"],
     "hafenbuero": ["route_wetter", "ping"],
     "werkstatt": ["draft_text", "ping"],
+    "aussendienst": ["ping"],
 }
 
 STATUS_RE = re.compile(r"status uptime=(\d+)s sent=(\d+)B recv=(\d+)B")
@@ -451,11 +458,215 @@ def svc_toern_briefing(req: dict, caller=None, reporter=None) -> dict:
     except ValueError as e:
         out["error"] = f"Antwort nicht lesbar: {e}"
         return _finish(out, rep, t_run)
+    briefing = {"titel": topic, "text": draft.get("text"), "modell": draft.get("model"),
+                "llm_ms": draft.get("llm_ms"), "gpu": draft.get("gpu"),
+                "route": facts.get("route"), "wetter": facts.get("wetter")}
+    # Hop 4 (only while the Außendienst node is actually connected; otherwise the run honestly
+    # covers three sites and says so - never a made-up field result).
+    seen = read_lastseen(FIELD_CHANNEL)
+    if seen is not None and time.time() - seen < FIELD_ONLINE_WINDOW_S:
+        fr = field_hop(4, req.get("run"), briefing, rep, t_run, hops)
+        if not fr["ok"]:
+            out["error"] = f"Außendienst: {fr['error']}"
+            return _finish(out, rep, t_run)
+        briefing["aussendienst"] = fr["result"]
+    else:
+        briefing["aussendienst"] = None
     out["ok"] = True
-    out["briefing"] = {"titel": topic, "text": draft.get("text"), "modell": draft.get("model"),
-                       "llm_ms": draft.get("llm_ms"), "gpu": draft.get("gpu"),
-                       "route": facts.get("route"), "wetter": facts.get("wetter")}
+    out["briefing"] = briefing
     return _finish(out, rep, t_run)
+
+
+# ------------------------------------------------------------------- Außendienst (field node)
+FIELD_CHANNEL = "aussendienst-zentrale"
+FIELD_ONLINE_WINDOW_S = 90      # a connected field node polls every <= ~30 s
+FIELD_WAIT_S = 45.0             # job handed over + result back
+FIELD_POLL_S = 20.0             # long-poll window of one feld_abruf
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+CRUISE_KMH = 9.0                # assumption of the field sheet (about 5 kn through the water)
+
+
+def field_dir(sub: str) -> str:
+    d = os.path.join(os.environ.get("NORDWIND_STATE_DIR", "/tmp"), "field", sub)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _write_json_atomic(path: str, obj) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+
+
+def field_job_for(briefing: dict, run: str) -> dict:
+    """What Zentrale hands to the field node: the facts it needs, not the whole briefing."""
+    w, r = briefing.get("wetter") or {}, briefing.get("route") or {}
+    return {"run": run, "titel": briefing.get("titel"), "route": {"name": r.get("name"), "legs": r.get("legs"), "gesamt_km": r.get("gesamt_km")},
+            "wetter": {k: w.get(k) for k in ("datum", "ort", "wind_kn_max", "boeen_kn_max", "regen_mm", "temp_min_c", "temp_max_c")}}
+
+
+def svc_feld_abruf(req: dict, sleep=time.sleep, clock=time.monotonic) -> dict:
+    """Long-poll by the field node: hand out the oldest pending job (claimed atomically) or time out empty."""
+    wait = min(max(float(req.get("wait") or 0), 0.0), 25.0) if isinstance(req.get("wait"), (int, float)) else 0.0
+    inbox, claimed = field_dir("inbox"), field_dir("claimed")
+    end = clock() + wait
+    while True:
+        names = sorted((f for f in os.listdir(inbox) if f.endswith(".json")), key=lambda f: os.path.getmtime(os.path.join(inbox, f)))
+        for name in names:
+            src = os.path.join(inbox, name)
+            try:
+                os.replace(src, os.path.join(claimed, name))
+                with open(os.path.join(claimed, name), encoding="utf-8") as f:
+                    return {"job": json.load(f)}
+            except (OSError, ValueError):
+                continue
+        if clock() >= end:
+            return {"job": None}
+        sleep(0.4)
+
+
+def svc_feld_quittung(req: dict) -> dict:
+    run = req.get("run")
+    if not isinstance(run, str) or not RUN_ID_RE.match(run):
+        raise ServiceError("quittung without valid run id")
+    body = json.dumps(req, ensure_ascii=False)
+    if len(body) > 8000:
+        raise ServiceError("quittung too large")
+    _write_json_atomic(os.path.join(field_dir("outbox"), run + ".json"), req)
+    return {"ok": True}
+
+
+def field_hop(seq: int, run, briefing: dict, rep: Reporter, t_run: float, hops: list, poll_s: float = 0.4) -> dict:
+    """Hop 4: hand the job to the field node's pending poll and wait for its signed-off result."""
+    run = run if isinstance(run, str) and RUN_ID_RE.match(run) else "r" + str(now_ms())
+    inbox, outbox = field_dir("inbox"), field_dir("outbox")
+    try:
+        os.remove(os.path.join(outbox, run + ".json"))
+    except OSError:
+        pass
+    base = {"run": run, "seq": seq, "from": "zentrale", "to": "aussendienst", "channel": FIELD_CHANNEL,
+            "service": "feld_auftrag", "t0_ms": int((time.monotonic() - t_run) * 1000)}
+    rep.hop({**base, "state": "start"})
+    t0 = time.monotonic()
+    job = field_job_for(briefing, run)
+    job_path = os.path.join(inbox, run + ".json")
+    _write_json_atomic(job_path, job)
+    res_path = os.path.join(outbox, run + ".json")
+    got, err = None, None
+    while time.monotonic() - t0 < FIELD_WAIT_S:
+        if os.path.exists(res_path):
+            try:
+                with open(res_path, encoding="utf-8") as f:
+                    got = json.load(f)
+            except (OSError, ValueError) as e:
+                err = f"Quittung nicht lesbar: {e}"
+            break
+        time.sleep(poll_s)
+    else:
+        err = f"keine Quittung innerhalb {int(FIELD_WAIT_S)}s (Auftrag nicht abgeholt oder nicht bearbeitet)"
+    for leftover in (job_path, res_path):
+        try:
+            os.remove(leftover)
+        except OSError:
+            pass
+    dur = int((time.monotonic() - t0) * 1000)
+    wire = (got or {}).get("wire") if isinstance(got, dict) else None
+    wire = wire if isinstance(wire, dict) else {}
+    num = lambda k: wire.get(k) if isinstance(wire.get(k), int) else None  # noqa: E731
+    result = clean_field_result((got or {}).get("ergebnis")) if got else None
+    if got and result is None:
+        err = "Quittung ohne gueltiges Ergebnis"
+    done = {**base, "state": "ok" if not err else "error", "dur_ms": dur,
+            "sent_bytes": num("sent_bytes"), "recv_bytes": num("recv_bytes"),
+            "transport": wire.get("transport") if isinstance(wire.get("transport"), str) else None,
+            "plain_out": len(json.dumps(job, ensure_ascii=False).encode()),
+            "plain_in": len(json.dumps(got, ensure_ascii=False).encode()) if got else 0, "error": err}
+    hops.append(done)
+    rep.hop(done)
+    return {"ok": not err, "error": err, "result": result}
+
+
+def clean_field_result(r):
+    """Bound what the field node may put into the briefing (it is untrusted input for Zentrale)."""
+    if not isinstance(r, dict):
+        return None
+    txt = lambda v, n: v[:n] if isinstance(v, str) else None  # noqa: E731
+    legs = [{"von": txt(l.get("von"), 40), "nach": txt(l.get("nach"), 40), "km": l.get("km") if isinstance(l.get("km"), (int, float)) else None,
+             "fahrzeit_min": l.get("fahrzeit_min") if isinstance(l.get("fahrzeit_min"), int) else None}
+            for l in (r.get("etappen") or [])[:8] if isinstance(l, dict)]
+    return {"geraet": txt(r.get("geraet"), 120), "titel": txt(r.get("titel"), MAX_TOPIC_LEN), "freigabe": txt(r.get("freigabe"), 40),
+            "begruendung": txt(r.get("begruendung"), 300), "etappen": legs, "fahrzeit_min": r.get("fahrzeit_min") if isinstance(r.get("fahrzeit_min"), int) else None,
+            "checkliste": [txt(c, 160) for c in (r.get("checkliste") or [])[:8] if isinstance(c, str)], "zettel": txt(r.get("zettel"), 900)}
+
+
+def field_sheet(job: dict, device: str) -> dict:
+    """The field node's own work: a rule-based sheet derived from the job (route + weather of THIS run).
+    No model, no invented data: every figure comes from the job or from the stated assumptions."""
+    w, route = job.get("wetter") or {}, job.get("route") or {}
+    wind, boe, rain = w.get("wind_kn_max"), w.get("boeen_kn_max"), w.get("regen_mm")
+    if not isinstance(wind, (int, float)) or not isinstance(boe, (int, float)):
+        raise ServiceError("Auftrag ohne Windwerte")
+    if boe >= 34 or wind >= 28:
+        freigabe, why = "abgeraten", "Sturm: Boeen ab 34 kn bzw. Wind ab 28 kn"
+    elif boe >= 28 or wind >= 22:
+        freigabe, why = "mit Einschraenkung", "Starkwind: Reff vorbereiten, Etappen verkuerzen"
+    else:
+        freigabe, why = "freigegeben", "Wind und Boeen im Rahmen der Toernplanung"
+    legs = []
+    for l in (route.get("legs") or [])[:8]:
+        km = l.get("km")
+        if isinstance(km, (int, float)):
+            legs.append({"von": l.get("von"), "nach": l.get("nach"), "km": km, "fahrzeit_min": round(km / CRUISE_KMH * 60)})
+    total_min = sum(l["fahrzeit_min"] for l in legs)
+    check = ["Funkkanal 16 abhoeren, Berufsschiffahrt hat Vorrang", "Tidenfahrplan gegen die Etappen pruefen"]
+    if freigabe != "freigegeben":
+        check.insert(0, "Reff einbinden, Rettungswesten auch fuer die Crew bereithalten")
+    if isinstance(rain, (int, float)) and rain >= 2:
+        check.append(f"Regenzeug an Bord ({rain} mm erwartet)")
+    h, m = divmod(total_min, 60)
+    zettel = (f"Feldzettel {job.get('titel')}: {w.get('datum')} {w.get('ort')}, Wind {wind} kn, Boeen {boe} kn -> {freigabe}. "
+              + " | ".join(f"{l['von']}-{l['nach']} {l['km']} km (~{l['fahrzeit_min']} min)" for l in legs)
+              + f" | gesamt {route.get('gesamt_km')} km, ~{h} h {m:02d} min bei {CRUISE_KMH:g} km/h.")
+    return {"geraet": device, "titel": job.get("titel"), "freigabe": freigabe, "begruendung": f"{why} ({wind} kn / {boe} kn am {w.get('datum')})",
+            "etappen": legs, "fahrzeit_min": total_min, "checkliste": check, "zettel": zettel}
+
+
+def device_label() -> str:
+    # Honest self-description: what this node really is, never a pretended phone.
+    return f"{platform.system()} {platform.machine()} (Feldknoten, regelbasiert, ohne Modell)"
+
+
+def field_loop(caller=None, sleep=time.sleep, once: bool = False) -> int:
+    """Run forever as the Außendienst node: poll Zentrale, work the job, hand the result back."""
+    call = caller or call_peer
+    backoff = 2.0
+    print(f"nordwind[aussendienst]: polling {FIELD_CHANNEL} every <= {int(FIELD_POLL_S)}s", flush=True)
+    while True:
+        r = call(FIELD_CHANNEL, "feld_abruf", {"wait": FIELD_POLL_S, "os": platform.system(), "arch": platform.machine()}, FIELD_POLL_S + 25.0)
+        if not r["ok"]:
+            print(f"nordwind[aussendienst]: poll failed: {r['error']}", flush=True)
+            if once:
+                return 1
+            sleep(backoff)
+            backoff = min(backoff * 2, 30.0)
+            continue
+        backoff = 2.0
+        try:
+            job = json.loads(r["reply"]).get("job")
+        except ValueError:
+            job = None
+        if job:
+            try:
+                sheet = field_sheet(job, device_label())
+                q = {"run": job.get("run"), "ergebnis": sheet,
+                     "wire": {"sent_bytes": r["sent_bytes"], "recv_bytes": r["recv_bytes"], "transport": r["transport"], "poll_ms": r["dur_ms"]}}
+            except ServiceError as e:
+                q = {"run": job.get("run"), "ergebnis": None, "fehler": str(e)}
+            qr = call(FIELD_CHANNEL, "feld_quittung", q, 30.0)
+            print(f"nordwind[aussendienst]: job {job.get('run')} -> {'ok' if qr['ok'] else 'quittung failed: ' + str(qr['error'])}", flush=True)
+        if once:
+            return 0
 
 
 def _finish(out: dict, rep: Reporter, t_run: float) -> dict:
@@ -471,6 +682,7 @@ class ServiceError(Exception):
 HANDLERS = {
     "ping": svc_ping, "draft_text": svc_draft_text, "route_wetter": svc_route_wetter,
     "mesh_status": svc_mesh_status, "toern_briefing": svc_toern_briefing,
+    "feld_abruf": svc_feld_abruf, "feld_quittung": svc_feld_quittung,
 }
 
 
@@ -490,6 +702,8 @@ def dispatch(service: str, raw: str, node=None) -> dict:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "field":
+        return field_loop()
     service = os.environ.get("CT_SERVICE_TYPE", "")
     chan = os.environ.get("NORDWIND_SERVING_CHANNEL")
     if chan:

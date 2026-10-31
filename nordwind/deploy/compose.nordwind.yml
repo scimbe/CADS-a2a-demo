@@ -1,6 +1,7 @@
 # Nordwind nodes. ONE file, started per host with a profile (no inbound ports anywhere):
 #   ssh-united.becke.biz   (Hafenbüro)  docker compose -f nordwind/deploy/compose.nordwind.yml --profile hafenbuero up -d --build
 #   ssh.labor-setup.com    (Werkstatt)  docker compose -f nordwind/deploy/compose.nordwind.yml --profile werkstatt up -d --build
+#   ssh-united.becke.biz   (Außendienst) docker compose -f nordwind/deploy/compose.nordwind.yml --profile aussendienst up -d --build
 #   ssh.cs4f.org (macOS)   (Zentrale)   preferred: native, see nordwind/docs/RUNBOOK-nordwind.md; Docker variant: --profile zentrale
 # Each host needs only ITS OWN env file from nordwind-provision.sh (never copy the others).
 x-logging: &log {driver: json-file, options: {max-size: "10m", max-file: "3"}}
@@ -42,4 +43,10 @@ services:
     <<: *node
     profiles: [zentrale]
     env_file: [generated/zentrale.env]
+    environment: *plane
+  aussendienst:
+    <<: *node
+    profiles: [aussendienst]
+    env_file: [generated/aussendienst.env]
+    mem_limit: 128m
     environment: *plane

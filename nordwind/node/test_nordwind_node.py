@@ -124,5 +124,88 @@ class Services(unittest.TestCase):
         self.assertEqual(m["werkstatt"]["info"]["os"], "Linux")
 
 
+JOB = {"run": "r9", "titel": "Toern-Briefing Samstag Bremen",
+       "route": {"name": "Weser", "gesamt_km": 88, "legs": [{"von": "Bremen Schlachte", "nach": "Vegesack", "km": 21},
+                                                           {"von": "Vegesack", "nach": "Brake", "km": 26}, {"von": "Brake", "nach": "Bremerhaven", "km": 41}]},
+       "wetter": {"datum": "2026-11-07", "ort": "Weser / Bremerhaven", "wind_kn_max": 12.0, "boeen_kn_max": 20.0, "regen_mm": 0.4}}
+
+
+class Field(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        os.environ["NORDWIND_STATE_DIR"] = self.tmp
+
+    def test_sheet_is_derived_from_the_job(self):
+        s = n.field_sheet(JOB, "Linux x86_64")
+        self.assertEqual(s["freigabe"], "freigegeben")
+        self.assertEqual([l["fahrzeit_min"] for l in s["etappen"]], [140, 173, 273])
+        self.assertEqual(s["fahrzeit_min"], 586)
+        for needle in ("Samstag Bremen", "2026-11-07", "12.0 kn", "Vegesack-Brake 26 km", "88 km"):
+            self.assertIn(needle, s["zettel"])
+
+    def test_sheet_reacts_to_weather(self):
+        storm = {**JOB, "wetter": {**JOB["wetter"], "wind_kn_max": 30.0, "boeen_kn_max": 41.0}}
+        s = n.field_sheet(storm, "x")
+        self.assertEqual(s["freigabe"], "abgeraten"); self.assertIn("Reff", s["checkliste"][0])
+        with self.assertRaises(n.ServiceError):
+            n.field_sheet({**JOB, "wetter": {}}, "x")
+
+    def test_poll_claims_job_once_and_times_out_empty(self):
+        self.assertEqual(n.svc_feld_abruf({"wait": 0})["job"], None)
+        n._write_json_atomic(os.path.join(n.field_dir("inbox"), "r9.json"), JOB)
+        self.assertEqual(n.svc_feld_abruf({"wait": 0})["job"]["run"], "r9")
+        self.assertEqual(n.svc_feld_abruf({"wait": 0})["job"], None)
+
+    def test_quittung_rejects_bad_run_id(self):
+        with self.assertRaises(n.ServiceError):
+            n.svc_feld_quittung({"run": "../x", "ergebnis": {}})
+
+    def test_orchestration_has_field_hop_when_node_is_connected(self):
+        import threading
+        n.touch_lastseen(n.FIELD_CHANNEL)
+        def caller(ch, svc, payload, to):
+            body = {"text": "T", "model": "m"} if svc == "draft_text" else {"route": JOB["route"], "wetter": JOB["wetter"]}
+            return {"ok": True, "reply": json.dumps(body), "dur_ms": 5, "sent_bytes": 10, "recv_bytes": 20, "transport": "tcp_443", "error": None, "plain_out": 3, "plain_in": 4}
+        def field_node():  # what field_loop does against the real handlers
+            job = n.svc_feld_abruf({"wait": 5}, sleep=lambda _: __import__("time").sleep(0.05))["job"]
+            n.svc_feld_quittung({"run": job["run"], "ergebnis": n.field_sheet(job, "Linux test"), "wire": {"sent_bytes": 111, "recv_bytes": 222, "transport": "tcp_443"}})
+        t = threading.Thread(target=field_node); t.start()
+        posted = []
+        out = n.svc_toern_briefing({"run": "r9"}, caller=caller, reporter=n.Reporter("https://x/y", "tok", poster=lambda b: posted.append(json.loads(b))))
+        t.join()
+        self.assertTrue(out["ok"], out)
+        self.assertEqual([h["to"] for h in out["hops"]], ["werkstatt", "hafenbuero", "aussendienst"])
+        h4 = out["hops"][2]
+        self.assertEqual((h4["seq"], h4["state"], h4["sent_bytes"], h4["recv_bytes"]), (4, "ok", 111, 222))
+        self.assertIn("Vegesack-Brake 26 km", out["briefing"]["aussendienst"]["zettel"])
+        self.assertEqual(posted[-2]["service"], "feld_auftrag")
+
+    def test_field_hop_fails_loudly_without_receipt(self):
+        n.touch_lastseen(n.FIELD_CHANNEL)
+        old = n.FIELD_WAIT_S; n.FIELD_WAIT_S = 0.3
+        try:
+            hops = []
+            r = n.field_hop(4, "r8", {"titel": "t"}, n.Reporter(None, None), 0.0, hops, poll_s=0.05)
+        finally:
+            n.FIELD_WAIT_S = old
+        self.assertFalse(r["ok"]); self.assertEqual(hops[0]["state"], "error")
+
+    def test_orchestration_skips_field_hop_when_node_never_seen(self):
+        caller = lambda ch, svc, p, to: {"ok": True, "reply": json.dumps({"text": "T"} if svc == "draft_text" else {"route": {}, "wetter": {}}),
+                                          "dur_ms": 1, "sent_bytes": 1, "recv_bytes": 1, "transport": None, "error": None, "plain_out": 1, "plain_in": 1}
+        out = n.svc_toern_briefing({"run": "r7"}, caller=caller, reporter=n.Reporter(None, None))
+        self.assertTrue(out["ok"]); self.assertEqual(len(out["hops"]), 2); self.assertIsNone(out["briefing"]["aussendienst"])
+
+    def test_loop_polls_then_hands_back_result(self):
+        calls = []
+        def caller(ch, svc, payload, to):
+            calls.append(svc)
+            rep = {"job": JOB} if svc == "feld_abruf" else {"ok": True}
+            return {"ok": True, "reply": json.dumps(rep), "dur_ms": 4, "sent_bytes": 5, "recv_bytes": 6, "transport": "tcp_443", "error": None}
+        self.assertEqual(n.field_loop(caller=caller, once=True), 0)
+        self.assertEqual(calls, ["feld_abruf", "feld_quittung"])
+
+
 if __name__ == "__main__":
     unittest.main()
